@@ -74,6 +74,7 @@ exports.signIn = async (req, res) => {
                 success: true,
                 message: req.__("login_successful"), // Translate message
                 accessToken,
+                refreshToken,
                 user: payload
             })
 
@@ -137,7 +138,11 @@ exports.signOut = async (req, res) => {
 exports.getNewAccessToken = async (req, res) => {
     try {
         const user = req.user;
-        const refreshToken = req.cookies.refreshToken;
+        const refreshToken =
+            req.refreshToken ||
+            req.cookies.refreshToken ||
+            req.headers["x-refresh-token"] ||
+            req.body?.refreshToken;
 
         // verify the refresh token with the DB
         const isExist = await verifyRefreshTokenDB(refreshToken);
