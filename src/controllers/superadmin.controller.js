@@ -54,7 +54,7 @@ exports.signIn = async (req, res) => {
 
             res.cookie('accessToken', accessToken, cookieOptions);
             res.cookie('refreshToken', refreshToken, cookieRefreshTokenOptions);
-            res.cookie('kadesh__authenticated', true, {
+            res.cookie('kadeshfood__authenticated', true, {
                 expires: new Date(Date.now() + parseInt(CONFIG.COOKIE_EXPIRY_REFRESH)),
                 domain: CONFIG.FRONTEND_DOMAIN_COOKIE,
                 sameSite: false,
@@ -109,7 +109,7 @@ exports.signOut = async (req, res) => {
 
         res.clearCookie('accessToken', cookieOptions);
         res.clearCookie('refreshToken', cookieOptions);
-        res.clearCookie('kadesh__authenticated', {
+        res.clearCookie('kadeshfood__authenticated', {
             expires: new Date(Date.now()),
             domain: CONFIG.FRONTEND_DOMAIN_COOKIE,
             sameSite: false,
@@ -185,7 +185,7 @@ exports.getNewAccessToken = async (req, res) => {
                 secure: process.env.NODE_ENV == "production",
                 path: "/"
             });
-            res.clearCookie('kadesh__authenticated', {
+            res.clearCookie('kadeshfood__authenticated', {
                 expires: new Date(Date.now()),
                 domain: CONFIG.FRONTEND_DOMAIN_COOKIE,
                 sameSite: false,

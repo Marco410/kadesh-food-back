@@ -162,7 +162,7 @@ exports.hasRefreshToken = (req, res, next) => {
             secure: process.env.NODE_ENV == "production",
             path: "/"
         }); 
-        res.clearCookie('kadesh__authenticated', {
+        res.clearCookie('kadeshfood__authenticated', {
             expires: new Date(Date.now()),
             domain: CONFIG.FRONTEND_DOMAIN_COOKIE,
             sameSite: false,
