@@ -2646,7 +2646,7 @@ exports.getReportByIdDB = async (reportId, type, from, to, tenantId) => {
     const currency = await getCurrencyDB(tenantId);
     const storeSettings = await getStoreSettingDB(tenantId);
     const store = {
-      name: storeSettings?.store_name || "RestroPro",
+      name: storeSettings?.store_name || "Kadesh Food",
       address: storeSettings?.address || "",
       phone: storeSettings?.phone || "",
       email: storeSettings?.email || "",
