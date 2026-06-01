@@ -1,7 +1,10 @@
 const { addMenuItemDB, updateMenuItemDB, deleteMenuItemDB, addMenuItemAddonDB, updateMenuItemAddonDB, deleteMenuItemAddonDB, getMenuItemAddonsDB, getAllAddonsDB, addMenuItemVariantDB, updateMenuItemVariantDB, deleteMenuItemVariantDB, getMenuItemVariantsDB, getAllVariantsDB, getAllMenuItemsDB, getMenuItemDB, updateMenuItemImageDB, changeMenuItemVisibilityDB, getRecipeItemsDB, addRecipeItemDB, deleteRecipeItemDB, updateRecipeItemDB } = require("../services/menu_item.service");
-
-const path = require("path")
-const fs = require("fs");
+const {
+    validateImageFile,
+    uploadImage,
+    deleteImageByUrl,
+    buildMenuItemImageKey,
+} = require("../services/storage.service");
 const { getInventoryItemsDB } = require("../services/inventory.service");
 
 exports.addMenuItem = async (req, res) => {
@@ -64,30 +67,45 @@ exports.uploadMenuItemPhoto = async (req, res) => {
     try {
         const tenantId = req.user.tenant_id;
         const id = req.params.id;
+        const file = req.files?.image;
+        const validation = validateImageFile(file);
 
-        const file = req.files.image;
-
-        const imagePath = path.join(__dirname, `../../public/${tenantId}/`) + id;
-
-        if(!fs.existsSync(path.join(__dirname, `../../public/${tenantId}/`))) {
-            fs.mkdirSync(path.join(__dirname, `../../public/${tenantId}/`));
+        if (!validation.valid) {
+            return res.status(400).json({
+                success: false,
+                message: req.__(validation.message),
+            });
         }
 
-        const imageURL = `/public/${tenantId}/${id}`;
+        const menuItem = await getMenuItemDB(id, tenantId);
+        if (!menuItem) {
+            return res.status(404).json({
+                success: false,
+                message: req.__("menu_item_not_found"),
+            });
+        }
 
-        await file.mv(imagePath);
+        if (menuItem.image) {
+            await deleteImageByUrl(menuItem.image);
+        }
+
+        const imageURL = await uploadImage(
+            file,
+            buildMenuItemImageKey(tenantId, id)
+        );
+
         await updateMenuItemImageDB(id, imageURL, tenantId);
 
         return res.status(200).json({
             success: true,
-            message: req.__("menu_item_image_uploaded"), // Translate message
-            imageURL: imageURL
-        })
+            message: req.__("menu_item_image_uploaded"),
+            imageURL,
+        });
     } catch (error) {
         console.error(error);
         return res.status(500).json({
             success: false,
-            message: req.__("something_went_wrong_try_later") // Translate message
+            message: req.__("something_went_wrong_try_later"),
         });
     }
 };
@@ -96,21 +114,30 @@ exports.removeMenuItemPhoto = async (req, res) => {
     try {
         const tenantId = req.user.tenant_id;
         const id = req.params.id;
-        const imagePath = path.join(__dirname, `../../public/${tenantId}/`) + id;
 
-        fs.unlinkSync(imagePath)
+        const menuItem = await getMenuItemDB(id, tenantId);
+        if (!menuItem) {
+            return res.status(404).json({
+                success: false,
+                message: req.__("menu_item_not_found"),
+            });
+        }
+
+        if (menuItem.image) {
+            await deleteImageByUrl(menuItem.image);
+        }
 
         await updateMenuItemImageDB(id, null, tenantId);
 
         return res.status(200).json({
             success: true,
-            message: req.__("menu_item_image_removed") // Translate message
-        })
+            message: req.__("menu_item_image_removed"),
+        });
     } catch (error) {
         console.error(error);
         return res.status(500).json({
             success: false,
-            message: req.__("something_went_wrong_try_later") // Translate message
+            message: req.__("something_went_wrong_try_later"),
         });
     }
 };
