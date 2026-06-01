@@ -4,3 +4,6 @@ tmp
 /public/**
 !public/.gitkeep
 .env
+.pnpm-store
+pnpm-lock.yaml
+pnpm-workspace.yaml

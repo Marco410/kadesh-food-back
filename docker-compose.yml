@@ -1,0 +1,27 @@
+version: "3.8"
+services:
+  # DB Service
+  db:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    env_file:
+      - .env
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./restropro_saas.sql:/docker-entrypoint-initdb.d/01-restropro_saas.sql:ro
+    networks:
+      - mysqlnet
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  mysqlnet:
