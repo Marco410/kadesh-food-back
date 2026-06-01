@@ -1,4 +1,5 @@
 exports.CONFIG = {
+    ENVIRONMENT: process.env.ENVIRONMENT,
     DATABASE_URL: process.env.DATABASE_URL,
     JWT_SECRET: process.env.JWT_SECRET,
     JWT_EXPIRY: process.env.JWT_EXPIRY,
@@ -18,7 +19,6 @@ exports.CONFIG = {
     STORAGE_DRIVER: process.env.STORAGE_DRIVER || (process.env.S3_BUCKET_NAME ? "s3" : "local"),
     AWS_REGION: process.env.AWS_REGION || "us-east-2",
     S3_BUCKET_NAME: process.env.S3_BUCKET_NAME,
-    S3_PREFIX: (process.env.S3_PREFIX || "food").replace(/^\/+|\/+$/g, ""),
     AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
     AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
     ASSETS_PUBLIC_BASE_URL: process.env.ASSETS_PUBLIC_BASE_URL || "http://localhost:3000",

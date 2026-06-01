@@ -4,6 +4,7 @@ const { S3Client, PutObjectCommand, DeleteObjectCommand } = require("@aws-sdk/cl
 const { CONFIG } = require("../config");
 
 const PUBLIC_DIR = path.resolve(__dirname, "../../public");
+const S3_DEV_PREFIX = "dev";
 
 const MIME_TO_EXT = {
     "image/jpeg": ".jpg",
@@ -17,13 +18,11 @@ let s3Client;
 
 const isS3Storage = () => CONFIG.STORAGE_DRIVER === "s3";
 
-const withS3Prefix = (key) => {
-    const prefix = CONFIG.S3_PREFIX;
-    if (!prefix) {
-        return key;
-    }
-    return `${prefix}/${key}`;
-};
+const isDevEnvironment = () =>
+    String(CONFIG.ENVIRONMENT || "").toLowerCase() === "dev";
+
+const withS3Prefix = (key) =>
+    isDevEnvironment() ? `${S3_DEV_PREFIX}/${key}` : key;
 
 const getS3Client = () => {
     if (!s3Client) {
