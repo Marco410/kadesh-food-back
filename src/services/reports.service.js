@@ -56,6 +56,8 @@ const REPORT_TITLES = {
   "recommendation-score": "Recommendation Score",
 };
 
+const reportTitleKey = (reportId) => `reports_${reportId.replace(/-/g, "_")}`;
+
 const money = (value) => Number(value || 0);
 
 const buildDateRange = (type, from, to) => ({
@@ -103,9 +105,9 @@ const query = async (conn, sql, params = []) => {
   return rows;
 };
 
-const makeReport = ({ reportId, currency, store, type, from, to, summary = [], tables = [], charts = [] }) => ({
+const makeReport = ({ reportId, currency, store, type, from, to, summary = [], tables = [], charts = [], title, t }) => ({
   reportId,
-  title: REPORT_TITLES[reportId],
+  title: title ?? (t ? t(reportTitleKey(reportId)) : REPORT_TITLES[reportId]),
   currency,
   store,
   dateRange: buildDateRange(type, from, to),
@@ -180,7 +182,7 @@ const getPaymentRows = async (conn, type, from, to, tenantId) => {
   `, [tenantId, ...params]);
 };
 
-const getSalesSummaryReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getSalesSummaryReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const [invoiceTotals, orderTotals, newCustomersRows, totalCustomersRows, topItems, payments] = await Promise.all([
     getInvoiceTotals(conn, type, from, to, tenantId),
     getOrderTotals(conn, type, from, to, tenantId),
@@ -190,7 +192,7 @@ const getSalesSummaryReport = async (conn, type, from, to, tenantId, currency, s
     getPaymentRows(conn, type, from, to, tenantId),
   ]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "sales-summary",
     currency,
     store,
@@ -198,42 +200,42 @@ const getSalesSummaryReport = async (conn, type, from, to, tenantId, currency, s
     from,
     to,
     summary: [
-      { label: "Orders", value: orderTotals.orders_count || 0, type: "number" },
-      { label: "Average Order Value", value: money(invoiceTotals.average_order_value), type: "money" },
-      { label: "Total Customers", value: totalCustomersRows[0]?.total_customers || 0, type: "number" },
-      { label: "New Customers", value: newCustomersRows[0]?.new_customers || 0, type: "number" },
-      { label: "Repeat Customers", value: orderTotals.repeat_customers || 0, type: "number" },
-      { label: "Revenue", value: money(invoiceTotals.total_sales), type: "money" },
-      { label: "Net Sales", value: money(invoiceTotals.net_sales), type: "money" },
-      { label: "Tax", value: money(invoiceTotals.tax_total), type: "money" },
-      { label: "Service Charge", value: money(invoiceTotals.service_charge_total), type: "money" },
+      { label: t("reports_orders"), value: orderTotals.orders_count || 0, type: "number" },
+      { label: t("reports_average_order_value"), value: money(invoiceTotals.average_order_value), type: "money" },
+      { label: t("reports_total_customers"), value: totalCustomersRows[0]?.total_customers || 0, type: "number" },
+      { label: t("reports_new_customers"), value: newCustomersRows[0]?.new_customers || 0, type: "number" },
+      { label: t("reports_repeat_customers"), value: orderTotals.repeat_customers || 0, type: "number" },
+      { label: t("reports_revenue"), value: money(invoiceTotals.total_sales), type: "money" },
+      { label: t("reports_net_sales"), value: money(invoiceTotals.net_sales), type: "money" },
+      { label: t("reports_tax"), value: money(invoiceTotals.tax_total), type: "money" },
+      { label: t("reports_service_charge"), value: money(invoiceTotals.service_charge_total), type: "money" },
     ],
     tables: [
       {
-        title: "Top Selling Items",
+        title: t("reports_top_selling_items"),
         columns: [
-          { key: "title", label: "Item" },
-          { key: "quantity_sold", label: "Qty", type: "number" },
-          { key: "gross_sales", label: "Gross Sales", type: "money" },
-          { key: "price", label: "Price", type: "money" },
+          { key: "title", label: t("reports_item") },
+          { key: "quantity_sold", label: t("reports_qty"), type: "number" },
+          { key: "gross_sales", label: t("reports_gross_sales"), type: "money" },
+          { key: "price", label: t("reports_price"), type: "money" },
         ],
         rows: topItems,
       },
       {
-        title: "Payments by Method",
+        title: t("reports_payments_by_method"),
         columns: [
-          { key: "payment_type", label: "Payment Type" },
-          { key: "invoice_count", label: "Invoices", type: "number" },
-          { key: "total", label: "Total", type: "money" },
+          { key: "payment_type", label: t("reports_payment_type") },
+          { key: "invoice_count", label: t("reports_invoices"), type: "number" },
+          { key: "total", label: t("reports_total"), type: "money" },
         ],
         rows: payments,
       },
     ],
-    charts: [{ type: "pie", title: "Payments by Method", data: payments }],
+    charts: [{ type: "pie", title: t("reports_payments_by_method"), data: payments }],
   });
 };
 
-const getGrossSalesReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getGrossSalesReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("oi.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -249,7 +251,7 @@ const getGrossSalesReport = async (conn, type, from, to, tenantId, currency, sto
     ORDER BY gross_sales DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "gross-sales",
     currency,
     store,
@@ -257,25 +259,25 @@ const getGrossSalesReport = async (conn, type, from, to, tenantId, currency, sto
     from,
     to,
     summary: [
-      { label: "Gross Sales", value: rows.reduce((sum, row) => sum + money(row.gross_sales), 0), type: "money" },
-      { label: "Items Sold", value: rows.reduce((sum, row) => sum + money(row.quantity_sold), 0), type: "number" },
-      { label: "Selling Items", value: rows.length, type: "number" },
+      { label: t("reports_gross_sales"), value: rows.reduce((sum, row) => sum + money(row.gross_sales), 0), type: "money" },
+      { label: t("reports_items_sold"), value: rows.reduce((sum, row) => sum + money(row.quantity_sold), 0), type: "number" },
+      { label: t("reports_selling_items"), value: rows.length, type: "number" },
     ],
     tables: [{
-      title: "Gross Sales by Item",
+      title: t("reports_gross_sales_by_item"),
       columns: [
-        { key: "item", label: "Item" },
-        { key: "category", label: "Category" },
-        { key: "quantity_sold", label: "Qty", type: "number" },
-        { key: "gross_sales", label: "Gross Sales", type: "money" },
+        { key: "item", label: t("reports_item") },
+        { key: "category", label: t("reports_category") },
+        { key: "quantity_sold", label: t("reports_qty"), type: "number" },
+        { key: "gross_sales", label: t("reports_gross_sales"), type: "money" },
       ],
       rows,
     }],
-    charts: [{ type: "bar", title: "Gross Sales by Item", data: rows.slice(0, 10) }],
+    charts: [{ type: "bar", title: t("reports_gross_sales_by_item"), data: rows.slice(0, 10) }],
   });
 };
 
-const getNetSalesReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getNetSalesReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const totals = await getInvoiceTotals(conn, type, from, to, tenantId);
   const { filter, params } = getFilterCondition("created_at", type, from, to);
   const rows = await query(conn, `
@@ -292,7 +294,7 @@ const getNetSalesReport = async (conn, type, from, to, tenantId, currency, store
     ORDER BY date DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "net-sales",
     currency,
     store,
@@ -300,28 +302,30 @@ const getNetSalesReport = async (conn, type, from, to, tenantId, currency, store
     from,
     to,
     summary: [
-      { label: "Net Sales", value: money(totals.net_sales), type: "money" },
-      { label: "Tax", value: money(totals.tax_total), type: "money" },
-      { label: "Service Charge", value: money(totals.service_charge_total), type: "money" },
-      { label: "Revenue", value: money(totals.total_sales), type: "money" },
+      { label: t("reports_net_sales"), value: money(totals.net_sales), type: "money" },
+      { label: t("reports_tax"), value: money(totals.tax_total), type: "money" },
+      { label: t("reports_service_charge"), value: money(totals.service_charge_total), type: "money" },
+      { label: t("reports_revenue"), value: money(totals.total_sales), type: "money" },
     ],
     tables: [{
-      title: "Net Sales by Date",
+      title: t("reports_net_sales_by_date"),
       columns: [
-        { key: "date", label: "Date", type: "date" },
-        { key: "invoices", label: "Invoices", type: "number" },
-        { key: "net_sales", label: "Net Sales", type: "money" },
-        { key: "tax_total", label: "Tax", type: "money" },
-        { key: "service_charge_total", label: "Service Charge", type: "money" },
-        { key: "total_sales", label: "Revenue", type: "money" },
+        { key: "date", label: t("reports_date"), type: "date" },
+        { key: "invoices", label: t("reports_invoices"), type: "number" },
+        { key: "net_sales", label: t("reports_net_sales"), type: "money" },
+        { key: "tax_total", label: t("reports_tax"), type: "money" },
+        { key: "service_charge_total", label: t("reports_service_charge"), type: "money" },
+        { key: "total_sales", label: t("reports_revenue"), type: "money" },
       ],
       rows,
     }],
-    charts: [{ type: "line", title: "Net Sales Trend", data: [...rows].reverse() }],
+    charts: [{ type: "line", title: t("reports_net_sales_trend"), data: [...rows].reverse() }],
   });
 };
 
-const getGroupedInvoiceReport = async ({ conn, reportId, type, from, to, tenantId, currency, store, groupSelect, groupBy, orderBy = "revenue DESC", columns, tableTitle, summaryLabel }) => {
+const getGroupedInvoiceReport = async ({ conn, reportId, type, from, to, tenantId, currency, store, groupSelect, groupBy, orderBy = "revenue DESC", columns, tableTitleKey, summaryLabelKey, t = (key) => key }) => {
+  const tableTitle = t(tableTitleKey);
+  const summaryLabel = t(summaryLabelKey);
   const { filter, params } = getFilterCondition("i.created_at", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -338,8 +342,9 @@ const getGroupedInvoiceReport = async ({ conn, reportId, type, from, to, tenantI
     ORDER BY ${orderBy}
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId,
+    title: tableTitle,
     currency,
     store,
     type,
@@ -347,15 +352,15 @@ const getGroupedInvoiceReport = async ({ conn, reportId, type, from, to, tenantI
     to,
     summary: [
       { label: summaryLabel, value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
-      { label: "Invoices", value: rows.reduce((sum, row) => sum + money(row.invoices), 0), type: "number" },
-      { label: "Average Order Value", value: rows.length ? rows.reduce((sum, row) => sum + money(row.revenue), 0) / rows.reduce((sum, row) => sum + money(row.invoices), 0) : 0, type: "money" },
+      { label: t("reports_invoices"), value: rows.reduce((sum, row) => sum + money(row.invoices), 0), type: "number" },
+      { label: t("reports_average_order_value"), value: rows.length ? rows.reduce((sum, row) => sum + money(row.revenue), 0) / rows.reduce((sum, row) => sum + money(row.invoices), 0) : 0, type: "money" },
     ],
     tables: [{ title: tableTitle, columns, rows }],
     charts: [{ type: "bar", title: tableTitle, data: rows }],
   });
 };
 
-const getSalesByOrderTypeReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getSalesByOrderTypeReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("o.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -371,34 +376,35 @@ const getSalesByOrderTypeReport = async (conn, type, from, to, tenantId, currenc
     ORDER BY revenue DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "sales-by-order-type",
+    title: t("reports_sales_by_order_type"),
     currency,
     store,
     type,
     from,
     to,
     summary: [
-      { label: "Revenue", value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
-      { label: "Orders", value: rows.reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
-      { label: "Order Types", value: rows.length, type: "number" },
+      { label: t("reports_revenue"), value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
+      { label: t("reports_orders"), value: rows.reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
+      { label: t("reports_order_types"), value: rows.length, type: "number" },
     ],
     tables: [{
-      title: "Sales by Order Type",
+      title: t("reports_sales_by_order_type"),
       columns: [
-        { key: "order_type", label: "Order Type" },
-        { key: "orders", label: "Orders", type: "number" },
-        { key: "net_sales", label: "Net Sales", type: "money" },
-        { key: "revenue", label: "Revenue", type: "money" },
-        { key: "average_order_value", label: "AOV", type: "money" },
+        { key: "order_type", label: t("reports_order_type") },
+        { key: "orders", label: t("reports_orders"), type: "number" },
+        { key: "net_sales", label: t("reports_net_sales"), type: "money" },
+        { key: "revenue", label: t("reports_revenue"), type: "money" },
+        { key: "average_order_value", label: t("reports_aov"), type: "money" },
       ],
       rows,
     }],
-    charts: [{ type: "bar", title: "Revenue by Order Type", data: rows }],
+    charts: [{ type: "bar", title: t("reports_revenue_by_order_type"), data: rows }],
   });
 };
 
-const getSalesByTableReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getSalesByTableReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("o.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -416,35 +422,36 @@ const getSalesByTableReport = async (conn, type, from, to, tenantId, currency, s
     ORDER BY revenue DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "sales-by-table",
+    title: t("reports_sales_by_table"),
     currency,
     store,
     type,
     from,
     to,
     summary: [
-      { label: "Revenue", value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
-      { label: "Orders", value: rows.reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
-      { label: "Tables", value: rows.length, type: "number" },
+      { label: t("reports_revenue"), value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
+      { label: t("reports_orders"), value: rows.reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
+      { label: t("reports_tables"), value: rows.length, type: "number" },
     ],
     tables: [{
-      title: "Sales by Table",
+      title: t("reports_sales_by_table"),
       columns: [
-        { key: "table_title", label: "Table" },
-        { key: "floor", label: "Floor" },
-        { key: "orders", label: "Orders", type: "number" },
-        { key: "net_sales", label: "Net Sales", type: "money" },
-        { key: "revenue", label: "Revenue", type: "money" },
-        { key: "average_order_value", label: "AOV", type: "money" },
+        { key: "table_title", label: t("reports_table") },
+        { key: "floor", label: t("reports_floor") },
+        { key: "orders", label: t("reports_orders"), type: "number" },
+        { key: "net_sales", label: t("reports_net_sales"), type: "money" },
+        { key: "revenue", label: t("reports_revenue"), type: "money" },
+        { key: "average_order_value", label: t("reports_aov"), type: "money" },
       ],
       rows,
     }],
-    charts: [{ type: "bar", title: "Revenue by Table", data: rows.slice(0, 12) }],
+    charts: [{ type: "bar", title: t("reports_revenue_by_table"), data: rows.slice(0, 12) }],
   });
 };
 
-const getInvoiceDetailReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getInvoiceDetailReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("i.created_at", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -466,37 +473,38 @@ const getInvoiceDetailReport = async (conn, type, from, to, tenantId, currency, 
     LIMIT 1000
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "invoice-detail",
+    title: t("reports_invoice_detail"),
     currency,
     store,
     type,
     from,
     to,
     summary: [
-      { label: "Invoices", value: rows.length, type: "number" },
-      { label: "Revenue", value: rows.reduce((sum, row) => sum + money(row.total), 0), type: "money" },
-      { label: "Net Sales", value: rows.reduce((sum, row) => sum + money(row.net_sales), 0), type: "money" },
+      { label: t("reports_invoices"), value: rows.length, type: "number" },
+      { label: t("reports_revenue"), value: rows.reduce((sum, row) => sum + money(row.total), 0), type: "money" },
+      { label: t("reports_net_sales"), value: rows.reduce((sum, row) => sum + money(row.net_sales), 0), type: "money" },
     ],
     tables: [{
-      title: "Invoice Detail",
+      title: t("reports_invoice_detail"),
       columns: [
-        { key: "invoice_id", label: "Invoice" },
-        { key: "created_at", label: "Created", type: "datetime" },
-        { key: "customer", label: "Customer" },
-        { key: "payment_type", label: "Payment" },
-        { key: "order_type", label: "Order Type" },
-        { key: "net_sales", label: "Net Sales", type: "money" },
-        { key: "tax_total", label: "Tax", type: "money" },
-        { key: "service_charge_total", label: "Service", type: "money" },
-        { key: "total", label: "Total", type: "money" },
+        { key: "invoice_id", label: t("reports_invoice") },
+        { key: "created_at", label: t("reports_created"), type: "datetime" },
+        { key: "customer", label: t("reports_customer") },
+        { key: "payment_type", label: t("reports_payment") },
+        { key: "order_type", label: t("reports_order_type") },
+        { key: "net_sales", label: t("reports_net_sales"), type: "money" },
+        { key: "tax_total", label: t("reports_tax"), type: "money" },
+        { key: "service_charge_total", label: t("reports_service"), type: "money" },
+        { key: "total", label: t("reports_total"), type: "money" },
       ],
       rows,
     }],
   });
 };
 
-const getVoidsCancellationsReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getVoidsCancellationsReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("oi.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -522,35 +530,36 @@ const getVoidsCancellationsReport = async (conn, type, from, to, tenantId, curre
     WHERE tenant_id = ? AND status = 'cancelled' AND ${orderFilter.filter}
   `, [tenantId, ...orderFilter.params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "voids-cancellations",
+    title: t("reports_cancelled_items"),
     currency,
     store,
     type,
     from,
     to,
     summary: [
-      { label: "Cancelled Orders", value: cancelledOrders[0]?.cancelled_orders || 0, type: "number" },
-      { label: "Cancelled Items", value: rows.length, type: "number" },
-      { label: "Lost Sales", value: rows.reduce((sum, row) => sum + money(row.lost_sales), 0), type: "money" },
+      { label: t("reports_cancelled_orders"), value: cancelledOrders[0]?.cancelled_orders || 0, type: "number" },
+      { label: t("reports_cancelled_items"), value: rows.length, type: "number" },
+      { label: t("reports_lost_sales"), value: rows.reduce((sum, row) => sum + money(row.lost_sales), 0), type: "money" },
     ],
     tables: [{
-      title: "Cancelled Items",
+      title: t("reports_cancelled_items"),
       columns: [
-        { key: "date", label: "Date", type: "datetime" },
-        { key: "order_id", label: "Order" },
-        { key: "item", label: "Item" },
-        { key: "quantity", label: "Qty", type: "number" },
-        { key: "price", label: "Price", type: "money" },
-        { key: "lost_sales", label: "Lost Sales", type: "money" },
-        { key: "notes", label: "Notes" },
+        { key: "date", label: t("reports_date"), type: "datetime" },
+        { key: "order_id", label: t("reports_order") },
+        { key: "item", label: t("reports_item") },
+        { key: "quantity", label: t("reports_qty"), type: "number" },
+        { key: "price", label: t("reports_price"), type: "money" },
+        { key: "lost_sales", label: t("reports_lost_sales"), type: "money" },
+        { key: "notes", label: t("reports_notes") },
       ],
       rows,
     }],
   });
 };
 
-const getAverageOrderValueReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getAverageOrderValueReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const totals = await getInvoiceTotals(conn, type, from, to, tenantId);
   const { filter, params } = getFilterCondition("created_at", type, from, to);
   const rows = await query(conn, `
@@ -565,63 +574,66 @@ const getAverageOrderValueReport = async (conn, type, from, to, tenantId, curren
     ORDER BY date DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "average-order-value",
+    title: t("reports_average_order_value"),
     currency,
     store,
     type,
     from,
     to,
     summary: [
-      { label: "Average Order Value", value: money(totals.average_order_value), type: "money" },
-      { label: "Invoices", value: totals.invoice_count || 0, type: "number" },
-      { label: "Revenue", value: money(totals.total_sales), type: "money" },
+      { label: t("reports_average_order_value"), value: money(totals.average_order_value), type: "money" },
+      { label: t("reports_invoices"), value: totals.invoice_count || 0, type: "number" },
+      { label: t("reports_revenue"), value: money(totals.total_sales), type: "money" },
     ],
     tables: [{
-      title: "Average Order Value by Date",
+      title: t("reports_average_order_value_by_date"),
       columns: [
-        { key: "date", label: "Date", type: "date" },
-        { key: "invoices", label: "Invoices", type: "number" },
-        { key: "revenue", label: "Revenue", type: "money" },
-        { key: "average_order_value", label: "AOV", type: "money" },
+        { key: "date", label: t("reports_date"), type: "date" },
+        { key: "invoices", label: t("reports_invoices"), type: "number" },
+        { key: "revenue", label: t("reports_revenue"), type: "money" },
+        { key: "average_order_value", label: t("reports_aov"), type: "money" },
       ],
       rows,
     }],
-    charts: [{ type: "line", title: "AOV Trend", data: [...rows].reverse() }],
+    charts: [{ type: "line", title: t("reports_aov_trend"), data: [...rows].reverse() }],
   });
 };
 
-const getPaymentSummaryReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getPaymentSummaryReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const rows = await getPaymentRows(conn, type, from, to, tenantId);
   const total = rows.reduce((sum, row) => sum + money(row.total), 0);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "payment-summary",
+    title: t("reports_payment_summary"),
     currency,
     store,
     type,
     from,
     to,
     summary: [
-      { label: "Payments", value: total, type: "money" },
-      { label: "Invoices", value: rows.reduce((sum, row) => sum + money(row.invoice_count), 0), type: "number" },
-      { label: "Payment Types", value: rows.length, type: "number" },
+      { label: t("reports_payments"), value: total, type: "money" },
+      { label: t("reports_invoices"), value: rows.reduce((sum, row) => sum + money(row.invoice_count), 0), type: "number" },
+      { label: t("reports_payment_types"), value: rows.length, type: "number" },
     ],
     tables: [{
-      title: "Payment Summary",
+      title: t("reports_payment_summary"),
       columns: [
-        { key: "payment_type", label: "Payment Type" },
-        { key: "invoice_count", label: "Invoices", type: "number" },
-        { key: "total", label: "Total", type: "money" },
-        { key: "share", label: "Share %" },
+        { key: "payment_type", label: t("reports_payment_type") },
+        { key: "invoice_count", label: t("reports_invoices"), type: "number" },
+        { key: "total", label: t("reports_total"), type: "money" },
+        { key: "share", label: t("reports_share_percent") },
       ],
       rows: rows.map((row) => ({ ...row, share: total ? `${((money(row.total) / total) * 100).toFixed(2)}%` : "0.00%" })),
     }],
-    charts: [{ type: "pie", title: "Payment Mix", data: rows }],
+    charts: [{ type: "pie", title: t("reports_payment_mix"), data: rows }],
   });
 };
 
-const getPaymentKeywordReport = async (conn, type, from, to, tenantId, currency, store, reportId, title, keywords) => {
+const getPaymentKeywordReport = async (conn, type, from, to, tenantId, currency, store, reportId, titleKey, keywords, t = (key) => key) => {
+  const title = t(titleKey);
   const { filter, params } = getFilterCondition("i.created_at", type, from, to);
   const keywordFilter = keywords.map(() => "LOWER(COALESCE(pt.title, '')) LIKE ?").join(" OR ");
   const rows = await query(conn, `
@@ -639,8 +651,9 @@ const getPaymentKeywordReport = async (conn, type, from, to, tenantId, currency,
     ORDER BY i.created_at DESC, i.id DESC
   `, [tenantId, ...params, ...keywords.map((keyword) => `%${keyword}%`)]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId,
+    title,
     currency,
     store,
     type,
@@ -648,26 +661,26 @@ const getPaymentKeywordReport = async (conn, type, from, to, tenantId, currency,
     to,
     summary: [
       { label: title, value: rows.reduce((sum, row) => sum + money(row.total), 0), type: "money" },
-      { label: "Invoices", value: rows.length, type: "number" },
-      { label: "Average Payment", value: rows.length ? rows.reduce((sum, row) => sum + money(row.total), 0) / rows.length : 0, type: "money" },
+      { label: t("reports_invoices"), value: rows.length, type: "number" },
+      { label: t("reports_average_payment"), value: rows.length ? rows.reduce((sum, row) => sum + money(row.total), 0) / rows.length : 0, type: "money" },
     ],
     tables: [{
       title,
       columns: [
-        { key: "invoice_id", label: "Invoice" },
-        { key: "created_at", label: "Created", type: "datetime" },
-        { key: "payment_type", label: "Payment Type" },
-        { key: "net_sales", label: "Net Sales", type: "money" },
-        { key: "tax_total", label: "Tax", type: "money" },
-        { key: "service_charge_total", label: "Service", type: "money" },
-        { key: "total", label: "Total", type: "money" },
+        { key: "invoice_id", label: t("reports_invoice") },
+        { key: "created_at", label: t("reports_created"), type: "datetime" },
+        { key: "payment_type", label: t("reports_payment_type") },
+        { key: "net_sales", label: t("reports_net_sales"), type: "money" },
+        { key: "tax_total", label: t("reports_tax"), type: "money" },
+        { key: "service_charge_total", label: t("reports_service"), type: "money" },
+        { key: "total", label: t("reports_total"), type: "money" },
       ],
       rows,
     }],
   });
 };
 
-const getUnpaidOrdersReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getUnpaidOrdersReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("o.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -688,7 +701,7 @@ const getUnpaidOrdersReport = async (conn, type, from, to, tenantId, currency, s
     ORDER BY o.date DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "unpaid-orders",
     currency,
     store,
@@ -696,27 +709,27 @@ const getUnpaidOrdersReport = async (conn, type, from, to, tenantId, currency, s
     from,
     to,
     summary: [
-      { label: "Unpaid Orders", value: rows.length, type: "number" },
-      { label: "Estimated Total", value: rows.reduce((sum, row) => sum + money(row.estimated_total), 0), type: "money" },
-      { label: "Customers", value: new Set(rows.map((row) => row.customer)).size, type: "number" },
+      { label: t("reports_unpaid_orders"), value: rows.length, type: "number" },
+      { label: t("reports_estimated_total"), value: rows.reduce((sum, row) => sum + money(row.estimated_total), 0), type: "money" },
+      { label: t("reports_customers"), value: new Set(rows.map((row) => row.customer)).size, type: "number" },
     ],
     tables: [{
-      title: "Unpaid Orders",
+      title: t("reports_unpaid_orders"),
       columns: [
-        { key: "order_id", label: "Order" },
-        { key: "date", label: "Date", type: "datetime" },
-        { key: "order_type", label: "Order Type" },
-        { key: "table_title", label: "Table" },
-        { key: "customer", label: "Customer" },
-        { key: "status", label: "Status" },
-        { key: "estimated_total", label: "Estimated Total", type: "money" },
+        { key: "order_id", label: t("reports_order") },
+        { key: "date", label: t("reports_date"), type: "datetime" },
+        { key: "order_type", label: t("reports_order_type") },
+        { key: "table_title", label: t("reports_table") },
+        { key: "customer", label: t("reports_customer") },
+        { key: "status", label: t("reports_status") },
+        { key: "estimated_total", label: t("reports_estimated_total"), type: "money" },
       ],
       rows,
     }],
   });
 };
 
-const getPaymentTypeMixReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getPaymentTypeMixReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const rows = await getPaymentRows(conn, type, from, to, tenantId);
   const total = rows.reduce((sum, row) => sum + money(row.total), 0);
   const reportRows = rows.map((row) => ({
@@ -724,7 +737,7 @@ const getPaymentTypeMixReport = async (conn, type, from, to, tenantId, currency,
     share: total ? `${((money(row.total) / total) * 100).toFixed(2)}%` : "0.00%",
   }));
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "payment-type-mix",
     currency,
     store,
@@ -732,21 +745,21 @@ const getPaymentTypeMixReport = async (conn, type, from, to, tenantId, currency,
     from,
     to,
     summary: [
-      { label: "Payment Total", value: total, type: "money" },
-      { label: "Top Payment Type", value: reportRows[0]?.payment_type || "-", type: "text" },
-      { label: "Payment Types", value: reportRows.length, type: "number" },
+      { label: t("reports_payment_total"), value: total, type: "money" },
+      { label: t("reports_top_payment_type"), value: reportRows[0]?.payment_type || "-", type: "text" },
+      { label: t("reports_payment_types"), value: reportRows.length, type: "number" },
     ],
     tables: [{
-      title: "Payment Type Mix",
+      title: t("reports_payment_type_mix"),
       columns: [
-        { key: "payment_type", label: "Payment Type" },
-        { key: "invoice_count", label: "Invoices", type: "number" },
-        { key: "total", label: "Total", type: "money" },
-        { key: "share", label: "Share %" },
+        { key: "payment_type", label: t("reports_payment_type") },
+        { key: "invoice_count", label: t("reports_invoices"), type: "number" },
+        { key: "total", label: t("reports_total"), type: "money" },
+        { key: "share", label: t("reports_share_percent") },
       ],
       rows: reportRows,
     }],
-    charts: [{ type: "pie", title: "Payment Type Mix", data: reportRows }],
+    charts: [{ type: "pie", title: t("reports_payment_type_mix"), data: reportRows }],
   });
 };
 
@@ -771,39 +784,44 @@ const getItemSalesRows = async (conn, type, from, to, tenantId, orderBy = "gross
   `, [tenantId, ...params]);
 };
 
-const makeItemSalesReport = ({ reportId, title, rows, currency, store, type, from, to }) => makeReport({
+const makeItemSalesReport = ({ reportId, titleKey, rows, currency, store, type, from, to, t = (key) => key }) => {
+  const title = t(titleKey);
+  return makeReport({ t,
+  t,
   reportId,
+  title,
   currency,
   store,
   type,
   from,
   to,
   summary: [
-    { label: "Gross Sales", value: rows.reduce((sum, row) => sum + money(row.gross_sales), 0), type: "money" },
-    { label: "Quantity Sold", value: rows.reduce((sum, row) => sum + money(row.quantity_sold), 0), type: "number" },
-    { label: "Items", value: rows.length, type: "number" },
+    { label: t("reports_gross_sales"), value: rows.reduce((sum, row) => sum + money(row.gross_sales), 0), type: "money" },
+    { label: t("reports_quantity_sold"), value: rows.reduce((sum, row) => sum + money(row.quantity_sold), 0), type: "number" },
+    { label: t("reports_items"), value: rows.length, type: "number" },
   ],
   tables: [{
     title,
     columns: [
-      { key: "item", label: "Item" },
-      { key: "category", label: "Category" },
-      { key: "quantity_sold", label: "Qty", type: "number" },
-      { key: "gross_sales", label: "Gross Sales", type: "money" },
-      { key: "average_sold_price", label: "Avg Sold Price", type: "money" },
-      { key: "current_price", label: "Current Price", type: "money" },
+      { key: "item", label: t("reports_item") },
+      { key: "category", label: t("reports_category") },
+      { key: "quantity_sold", label: t("reports_qty"), type: "number" },
+      { key: "gross_sales", label: t("reports_gross_sales"), type: "money" },
+      { key: "average_sold_price", label: t("reports_avg_sold_price"), type: "money" },
+      { key: "current_price", label: t("reports_current_price"), type: "money" },
     ],
     rows,
   }],
   charts: [{ type: "bar", title, data: rows.slice(0, 12) }],
 });
-
-const getTopSellingItemsReport = async (conn, type, from, to, tenantId, currency, store) => {
-  const rows = await getItemSalesRows(conn, type, from, to, tenantId, "quantity_sold DESC, gross_sales DESC");
-  return makeItemSalesReport({ reportId: "top-selling-items", title: "Top Selling Items", rows: rows.slice(0, 50), currency, store, type, from, to });
 };
 
-const getLowSellingItemsReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getTopSellingItemsReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
+  const rows = await getItemSalesRows(conn, type, from, to, tenantId, "quantity_sold DESC, gross_sales DESC");
+  return makeItemSalesReport({ reportId: "top-selling-items", titleKey: "reports_top_selling_items", rows: rows.slice(0, 50), currency, store, type, from, to, t });
+};
+
+const getLowSellingItemsReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("oi.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -823,15 +841,15 @@ const getLowSellingItemsReport = async (conn, type, from, to, tenantId, currency
     ORDER BY quantity_sold ASC, gross_sales ASC, mi.title ASC
   `, [...params, ...params, ...params, tenantId]);
 
-  return makeItemSalesReport({ reportId: "low-selling-items", title: "Low Selling Items", rows: rows.slice(0, 50), currency, store, type, from, to });
+  return makeItemSalesReport({ reportId: "low-selling-items", titleKey: "reports_low_selling_items", rows: rows.slice(0, 50), currency, store, type, from, to, t });
 };
 
-const getItemSalesReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getItemSalesReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const rows = await getItemSalesRows(conn, type, from, to, tenantId);
-  return makeItemSalesReport({ reportId: "item-sales", title: "Item Sales", rows, currency, store, type, from, to });
+  return makeItemSalesReport({ reportId: "item-sales", titleKey: "reports_item_sales", rows, currency, store, type, from, to, t });
 };
 
-const getCategorySalesReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getCategorySalesReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("oi.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -848,7 +866,7 @@ const getCategorySalesReport = async (conn, type, from, to, tenantId, currency, 
     ORDER BY gross_sales DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "category-sales",
     currency,
     store,
@@ -856,26 +874,26 @@ const getCategorySalesReport = async (conn, type, from, to, tenantId, currency, 
     from,
     to,
     summary: [
-      { label: "Gross Sales", value: rows.reduce((sum, row) => sum + money(row.gross_sales), 0), type: "money" },
-      { label: "Quantity Sold", value: rows.reduce((sum, row) => sum + money(row.quantity_sold), 0), type: "number" },
-      { label: "Categories", value: rows.length, type: "number" },
+      { label: t("reports_gross_sales"), value: rows.reduce((sum, row) => sum + money(row.gross_sales), 0), type: "money" },
+      { label: t("reports_quantity_sold"), value: rows.reduce((sum, row) => sum + money(row.quantity_sold), 0), type: "number" },
+      { label: t("reports_categories"), value: rows.length, type: "number" },
     ],
     tables: [{
-      title: "Category Sales",
+      title: t("reports_category_sales"),
       columns: [
-        { key: "category", label: "Category" },
-        { key: "items_sold", label: "Items", type: "number" },
-        { key: "quantity_sold", label: "Qty", type: "number" },
-        { key: "gross_sales", label: "Gross Sales", type: "money" },
-        { key: "average_sold_price", label: "Avg Sold Price", type: "money" },
+        { key: "category", label: t("reports_category") },
+        { key: "items_sold", label: t("reports_items"), type: "number" },
+        { key: "quantity_sold", label: t("reports_qty"), type: "number" },
+        { key: "gross_sales", label: t("reports_gross_sales"), type: "money" },
+        { key: "average_sold_price", label: t("reports_avg_sold_price"), type: "money" },
       ],
       rows,
     }],
-    charts: [{ type: "bar", title: "Category Sales", data: rows }],
+    charts: [{ type: "bar", title: t("reports_category_sales"), data: rows }],
   });
 };
 
-const getVariantSalesReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getVariantSalesReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("oi.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -893,7 +911,7 @@ const getVariantSalesReport = async (conn, type, from, to, tenantId, currency, s
     ORDER BY gross_sales DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "variant-sales",
     currency,
     store,
@@ -901,26 +919,26 @@ const getVariantSalesReport = async (conn, type, from, to, tenantId, currency, s
     from,
     to,
     summary: [
-      { label: "Gross Sales", value: rows.reduce((sum, row) => sum + money(row.gross_sales), 0), type: "money" },
-      { label: "Quantity Sold", value: rows.reduce((sum, row) => sum + money(row.quantity_sold), 0), type: "number" },
-      { label: "Variants", value: rows.length, type: "number" },
+      { label: t("reports_gross_sales"), value: rows.reduce((sum, row) => sum + money(row.gross_sales), 0), type: "money" },
+      { label: t("reports_quantity_sold"), value: rows.reduce((sum, row) => sum + money(row.quantity_sold), 0), type: "number" },
+      { label: t("reports_variants"), value: rows.length, type: "number" },
     ],
     tables: [{
-      title: "Variant Sales",
+      title: t("reports_variant_sales"),
       columns: [
-        { key: "item", label: "Item" },
-        { key: "variant", label: "Variant" },
-        { key: "quantity_sold", label: "Qty", type: "number" },
-        { key: "gross_sales", label: "Gross Sales", type: "money" },
-        { key: "average_sold_price", label: "Avg Sold Price", type: "money" },
-        { key: "current_price", label: "Current Price", type: "money" },
+        { key: "item", label: t("reports_item") },
+        { key: "variant", label: t("reports_variant") },
+        { key: "quantity_sold", label: t("reports_qty"), type: "number" },
+        { key: "gross_sales", label: t("reports_gross_sales"), type: "money" },
+        { key: "average_sold_price", label: t("reports_avg_sold_price"), type: "money" },
+        { key: "current_price", label: t("reports_current_price"), type: "money" },
       ],
       rows,
     }],
   });
 };
 
-const getAddonSalesReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getAddonSalesReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("oi.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -942,7 +960,7 @@ const getAddonSalesReport = async (conn, type, from, to, tenantId, currency, sto
     ORDER BY addon_sales DESC, quantity_sold DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "addon-sales",
     currency,
     store,
@@ -950,26 +968,26 @@ const getAddonSalesReport = async (conn, type, from, to, tenantId, currency, sto
     from,
     to,
     summary: [
-      { label: "Addon Sales", value: rows.reduce((sum, row) => sum + money(row.addon_sales), 0), type: "money" },
-      { label: "Quantity Sold", value: rows.reduce((sum, row) => sum + money(row.quantity_sold), 0), type: "number" },
-      { label: "Addons", value: rows.length, type: "number" },
+      { label: t("reports_addon_sales"), value: rows.reduce((sum, row) => sum + money(row.addon_sales), 0), type: "money" },
+      { label: t("reports_quantity_sold"), value: rows.reduce((sum, row) => sum + money(row.quantity_sold), 0), type: "number" },
+      { label: t("reports_addons"), value: rows.length, type: "number" },
     ],
     tables: [{
-      title: "Addon Sales",
+      title: t("reports_addon_sales"),
       columns: [
-        { key: "item", label: "Item" },
-        { key: "addon", label: "Addon" },
-        { key: "order_lines", label: "Lines", type: "number" },
-        { key: "quantity_sold", label: "Qty", type: "number" },
-        { key: "addon_price", label: "Addon Price", type: "money" },
-        { key: "addon_sales", label: "Addon Sales", type: "money" },
+        { key: "item", label: t("reports_item") },
+        { key: "addon", label: t("reports_addon") },
+        { key: "order_lines", label: t("reports_lines"), type: "number" },
+        { key: "quantity_sold", label: t("reports_qty"), type: "number" },
+        { key: "addon_price", label: t("reports_addon_price"), type: "money" },
+        { key: "addon_sales", label: t("reports_addon_sales"), type: "money" },
       ],
       rows,
     }],
   });
 };
 
-const getMenuPriceAuditReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getMenuPriceAuditReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const itemRows = await query(conn, `
     SELECT
       'Item' AS type,
@@ -1028,7 +1046,7 @@ const getMenuPriceAuditReport = async (conn, type, from, to, tenantId, currency,
 
   const rows = [...itemRows, ...variantRows, ...addonRows];
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "menu-price-audit",
     currency,
     store,
@@ -1036,29 +1054,29 @@ const getMenuPriceAuditReport = async (conn, type, from, to, tenantId, currency,
     from,
     to,
     summary: [
-      { label: "Items", value: itemRows.length, type: "number" },
-      { label: "Variants", value: variantRows.length, type: "number" },
-      { label: "Addons", value: addonRows.length, type: "number" },
+      { label: t("reports_items"), value: itemRows.length, type: "number" },
+      { label: t("reports_variants"), value: variantRows.length, type: "number" },
+      { label: t("reports_addons"), value: addonRows.length, type: "number" },
     ],
     tables: [{
-      title: "Menu Price Audit",
+      title: t("reports_menu_price_audit"),
       columns: [
-        { key: "type", label: "Type" },
-        { key: "item", label: "Item" },
-        { key: "option_name", label: "Option" },
-        { key: "category", label: "Category" },
-        { key: "price", label: "Price", type: "money" },
-        { key: "net_price", label: "Net Price", type: "money" },
-        { key: "tax", label: "Tax" },
-        { key: "tax_rate", label: "Tax Rate", type: "number" },
-        { key: "status", label: "Status" },
+        { key: "type", label: t("reports_type") },
+        { key: "item", label: t("reports_item") },
+        { key: "option_name", label: t("reports_option") },
+        { key: "category", label: t("reports_category") },
+        { key: "price", label: t("reports_price"), type: "money" },
+        { key: "net_price", label: t("reports_net_price"), type: "money" },
+        { key: "tax", label: t("reports_tax") },
+        { key: "tax_rate", label: t("reports_tax_rate"), type: "number" },
+        { key: "status", label: t("reports_status") },
       ],
       rows,
     }],
   });
 };
 
-const getCustomerSummaryReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getCustomerSummaryReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const customerFilter = getFilterCondition("created_at", type, from, to);
   const orderFilter = getFilterCondition("o.date", type, from, to);
 
@@ -1101,7 +1119,7 @@ const getCustomerSummaryReport = async (conn, type, from, to, tenantId, currency
     `, [...orderFilter.params, tenantId]),
   ]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "customer-summary",
     currency,
     store,
@@ -1109,27 +1127,27 @@ const getCustomerSummaryReport = async (conn, type, from, to, tenantId, currency
     from,
     to,
     summary: [
-      { label: "Total Customers", value: totals[0]?.total_customers || 0, type: "number" },
-      { label: "New Customers", value: newCustomers[0]?.new_customers || 0, type: "number" },
-      { label: "Active Customers", value: activeCustomers[0]?.active_customers || 0, type: "number" },
-      { label: "Members", value: totals[0]?.member_customers || 0, type: "number" },
+      { label: t("reports_total_customers"), value: totals[0]?.total_customers || 0, type: "number" },
+      { label: t("reports_new_customers"), value: newCustomers[0]?.new_customers || 0, type: "number" },
+      { label: t("reports_active_customers"), value: activeCustomers[0]?.active_customers || 0, type: "number" },
+      { label: t("reports_members"), value: totals[0]?.member_customers || 0, type: "number" },
     ],
     tables: [{
-      title: "Top Active Customers",
+      title: t("reports_top_active_customers"),
       columns: [
-        { key: "name", label: "Customer" },
-        { key: "phone", label: "Phone" },
-        { key: "email", label: "Email" },
-        { key: "orders", label: "Orders", type: "number" },
-        { key: "revenue", label: "Revenue", type: "money" },
-        { key: "average_order_value", label: "AOV", type: "money" },
+        { key: "name", label: t("reports_customer") },
+        { key: "phone", label: t("reports_phone") },
+        { key: "email", label: t("reports_email") },
+        { key: "orders", label: t("reports_orders"), type: "number" },
+        { key: "revenue", label: t("reports_revenue"), type: "money" },
+        { key: "average_order_value", label: t("reports_aov"), type: "money" },
       ],
       rows: topCustomers,
     }],
   });
 };
 
-const getNewCustomersReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getNewCustomersReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("created_at", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -1145,7 +1163,7 @@ const getNewCustomersReport = async (conn, type, from, to, tenantId, currency, s
     ORDER BY created_at DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "new-customers",
     currency,
     store,
@@ -1153,26 +1171,26 @@ const getNewCustomersReport = async (conn, type, from, to, tenantId, currency, s
     from,
     to,
     summary: [
-      { label: "New Customers", value: rows.length, type: "number" },
-      { label: "Members", value: rows.filter((row) => row.membership === "Member").length, type: "number" },
-      { label: "With Email", value: rows.filter((row) => row.email).length, type: "number" },
+      { label: t("reports_new_customers"), value: rows.length, type: "number" },
+      { label: t("reports_members"), value: rows.filter((row) => row.membership === "Member").length, type: "number" },
+      { label: t("reports_with_email"), value: rows.filter((row) => row.email).length, type: "number" },
     ],
     tables: [{
-      title: "New Customers",
+      title: t("reports_new_customers"),
       columns: [
-        { key: "created_at", label: "Created", type: "datetime" },
-        { key: "name", label: "Customer" },
-        { key: "phone", label: "Phone" },
-        { key: "email", label: "Email" },
-        { key: "gender", label: "Gender" },
-        { key: "membership", label: "Membership" },
+        { key: "created_at", label: t("reports_created"), type: "datetime" },
+        { key: "name", label: t("reports_customer") },
+        { key: "phone", label: t("reports_phone") },
+        { key: "email", label: t("reports_email") },
+        { key: "gender", label: t("reports_gender") },
+        { key: "membership", label: t("reports_membership") },
       ],
       rows,
     }],
   });
 };
 
-const getReturningCustomersReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getReturningCustomersReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("o.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -1191,7 +1209,7 @@ const getReturningCustomersReport = async (conn, type, from, to, tenantId, curre
     ORDER BY orders DESC, revenue DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "returning-customers",
     currency,
     store,
@@ -1199,27 +1217,27 @@ const getReturningCustomersReport = async (conn, type, from, to, tenantId, curre
     from,
     to,
     summary: [
-      { label: "Returning Customers", value: rows.length, type: "number" },
-      { label: "Orders", value: rows.reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
-      { label: "Revenue", value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
+      { label: t("reports_returning_customers"), value: rows.length, type: "number" },
+      { label: t("reports_orders"), value: rows.reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
+      { label: t("reports_revenue"), value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
     ],
     tables: [{
-      title: "Returning Customers",
+      title: t("reports_returning_customers"),
       columns: [
-        { key: "name", label: "Customer" },
-        { key: "phone", label: "Phone" },
-        { key: "email", label: "Email" },
-        { key: "membership", label: "Membership" },
-        { key: "orders", label: "Orders", type: "number" },
-        { key: "revenue", label: "Revenue", type: "money" },
-        { key: "last_order_at", label: "Last Order", type: "datetime" },
+        { key: "name", label: t("reports_customer") },
+        { key: "phone", label: t("reports_phone") },
+        { key: "email", label: t("reports_email") },
+        { key: "membership", label: t("reports_membership") },
+        { key: "orders", label: t("reports_orders"), type: "number" },
+        { key: "revenue", label: t("reports_revenue"), type: "money" },
+        { key: "last_order_at", label: t("reports_last_order"), type: "datetime" },
       ],
       rows,
     }],
   });
 };
 
-const getTopCustomersReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getTopCustomersReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("o.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -1240,7 +1258,7 @@ const getTopCustomersReport = async (conn, type, from, to, tenantId, currency, s
     LIMIT 100
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "top-customers",
     currency,
     store,
@@ -1248,28 +1266,28 @@ const getTopCustomersReport = async (conn, type, from, to, tenantId, currency, s
     from,
     to,
     summary: [
-      { label: "Top Customer Revenue", value: rows[0]?.revenue || 0, type: "money" },
-      { label: "Customers", value: rows.length, type: "number" },
-      { label: "Revenue", value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
+      { label: t("reports_top_customer_revenue"), value: rows[0]?.revenue || 0, type: "money" },
+      { label: t("reports_customers"), value: rows.length, type: "number" },
+      { label: t("reports_revenue"), value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
     ],
     tables: [{
-      title: "Top Customers",
+      title: t("reports_top_customers"),
       columns: [
-        { key: "name", label: "Customer" },
-        { key: "phone", label: "Phone" },
-        { key: "email", label: "Email" },
-        { key: "membership", label: "Membership" },
-        { key: "orders", label: "Orders", type: "number" },
-        { key: "revenue", label: "Revenue", type: "money" },
-        { key: "average_order_value", label: "AOV", type: "money" },
-        { key: "last_order_at", label: "Last Order", type: "datetime" },
+        { key: "name", label: t("reports_customer") },
+        { key: "phone", label: t("reports_phone") },
+        { key: "email", label: t("reports_email") },
+        { key: "membership", label: t("reports_membership") },
+        { key: "orders", label: t("reports_orders"), type: "number" },
+        { key: "revenue", label: t("reports_revenue"), type: "money" },
+        { key: "average_order_value", label: t("reports_aov"), type: "money" },
+        { key: "last_order_at", label: t("reports_last_order"), type: "datetime" },
       ],
       rows,
     }],
   });
 };
 
-const getCustomerBirthdaysReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getCustomerBirthdaysReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const rows = await query(conn, `
     SELECT
       phone,
@@ -1291,7 +1309,7 @@ const getCustomerBirthdaysReport = async (conn, type, from, to, tenantId, curren
     LIMIT 100
   `, [tenantId]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "customer-birthdays",
     currency,
     store,
@@ -1299,26 +1317,26 @@ const getCustomerBirthdaysReport = async (conn, type, from, to, tenantId, curren
     from,
     to,
     summary: [
-      { label: "Customers with Birthdays", value: rows.length, type: "number" },
-      { label: "Next 7 Days", value: rows.filter((row) => Number(row.days_until_birthday) <= 7).length, type: "number" },
-      { label: "Next 30 Days", value: rows.filter((row) => Number(row.days_until_birthday) <= 30).length, type: "number" },
+      { label: t("reports_customers_with_birthdays"), value: rows.length, type: "number" },
+      { label: t("reports_next_7_days"), value: rows.filter((row) => Number(row.days_until_birthday) <= 7).length, type: "number" },
+      { label: t("reports_next_30_days"), value: rows.filter((row) => Number(row.days_until_birthday) <= 30).length, type: "number" },
     ],
     tables: [{
-      title: "Upcoming Birthdays",
+      title: t("reports_upcoming_birthdays"),
       columns: [
-        { key: "days_until_birthday", label: "Days", type: "number" },
-        { key: "name", label: "Customer" },
-        { key: "phone", label: "Phone" },
-        { key: "email", label: "Email" },
-        { key: "birth_date", label: "Birth Date", type: "date" },
-        { key: "membership", label: "Membership" },
+        { key: "days_until_birthday", label: t("reports_days"), type: "number" },
+        { key: "name", label: t("reports_customer") },
+        { key: "phone", label: t("reports_phone") },
+        { key: "email", label: t("reports_email") },
+        { key: "birth_date", label: t("reports_birth_date"), type: "date" },
+        { key: "membership", label: t("reports_membership") },
       ],
       rows,
     }],
   });
 };
 
-const getMemberCustomersReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getMemberCustomersReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const rows = await query(conn, `
     SELECT
       c.phone,
@@ -1338,7 +1356,7 @@ const getMemberCustomersReport = async (conn, type, from, to, tenantId, currency
     ORDER BY revenue DESC, c.created_at DESC
   `, [tenantId]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "member-customers",
     currency,
     store,
@@ -1346,27 +1364,27 @@ const getMemberCustomersReport = async (conn, type, from, to, tenantId, currency
     from,
     to,
     summary: [
-      { label: "Members", value: rows.length, type: "number" },
-      { label: "Member Revenue", value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
-      { label: "Member Orders", value: rows.reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
+      { label: t("reports_members"), value: rows.length, type: "number" },
+      { label: t("reports_member_revenue"), value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
+      { label: t("reports_member_orders"), value: rows.reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
     ],
     tables: [{
-      title: "Member Customers",
+      title: t("reports_member_customers"),
       columns: [
-        { key: "name", label: "Customer" },
-        { key: "phone", label: "Phone" },
-        { key: "email", label: "Email" },
-        { key: "orders", label: "Orders", type: "number" },
-        { key: "revenue", label: "Revenue", type: "money" },
-        { key: "last_order_at", label: "Last Order", type: "datetime" },
-        { key: "created_at", label: "Created", type: "datetime" },
+        { key: "name", label: t("reports_customer") },
+        { key: "phone", label: t("reports_phone") },
+        { key: "email", label: t("reports_email") },
+        { key: "orders", label: t("reports_orders"), type: "number" },
+        { key: "revenue", label: t("reports_revenue"), type: "money" },
+        { key: "last_order_at", label: t("reports_last_order"), type: "datetime" },
+        { key: "created_at", label: t("reports_created"), type: "datetime" },
       ],
       rows,
     }],
   });
 };
 
-const getOrderStatusReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getOrderStatusReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -1379,7 +1397,7 @@ const getOrderStatusReport = async (conn, type, from, to, tenantId, currency, st
     ORDER BY status ASC, payment_status ASC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "order-status",
     currency,
     store,
@@ -1387,24 +1405,24 @@ const getOrderStatusReport = async (conn, type, from, to, tenantId, currency, st
     from,
     to,
     summary: [
-      { label: "Orders", value: rows.reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
-      { label: "Completed", value: rows.filter((row) => row.status === "completed").reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
-      { label: "Cancelled", value: rows.filter((row) => row.status === "cancelled").reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
-      { label: "Pending Payment", value: rows.filter((row) => row.payment_status === "pending").reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
+      { label: t("reports_orders"), value: rows.reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
+      { label: t("reports_completed"), value: rows.filter((row) => row.status === "completed").reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
+      { label: t("reports_cancelled"), value: rows.filter((row) => row.status === "cancelled").reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
+      { label: t("reports_pending_payment"), value: rows.filter((row) => row.payment_status === "pending").reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
     ],
     tables: [{
-      title: "Order Status",
+      title: t("reports_order_status"),
       columns: [
-        { key: "status", label: "Status" },
-        { key: "payment_status", label: "Payment" },
-        { key: "orders", label: "Orders", type: "number" },
+        { key: "status", label: t("reports_status") },
+        { key: "payment_status", label: t("reports_payment") },
+        { key: "orders", label: t("reports_orders"), type: "number" },
       ],
       rows,
     }],
   });
 };
 
-const getKitchenPerformanceReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getKitchenPerformanceReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("oi.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -1418,7 +1436,7 @@ const getKitchenPerformanceReport = async (conn, type, from, to, tenantId, curre
     ORDER BY item_lines DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "kitchen-performance",
     currency,
     store,
@@ -1426,25 +1444,25 @@ const getKitchenPerformanceReport = async (conn, type, from, to, tenantId, curre
     from,
     to,
     summary: [
-      { label: "Item Lines", value: rows.reduce((sum, row) => sum + money(row.item_lines), 0), type: "number" },
-      { label: "Quantity", value: rows.reduce((sum, row) => sum + money(row.quantity), 0), type: "number" },
-      { label: "Completed Qty", value: rows.filter((row) => row.status === "completed" || row.status === "delivered").reduce((sum, row) => sum + money(row.quantity), 0), type: "number" },
-      { label: "Cancelled Qty", value: rows.filter((row) => row.status === "cancelled").reduce((sum, row) => sum + money(row.quantity), 0), type: "number" },
+      { label: t("reports_item_lines"), value: rows.reduce((sum, row) => sum + money(row.item_lines), 0), type: "number" },
+      { label: t("reports_quantity"), value: rows.reduce((sum, row) => sum + money(row.quantity), 0), type: "number" },
+      { label: t("reports_completed_qty"), value: rows.filter((row) => row.status === "completed" || row.status === "delivered").reduce((sum, row) => sum + money(row.quantity), 0), type: "number" },
+      { label: t("reports_cancelled_qty"), value: rows.filter((row) => row.status === "cancelled").reduce((sum, row) => sum + money(row.quantity), 0), type: "number" },
     ],
     tables: [{
-      title: "Kitchen Item Status",
+      title: t("reports_kitchen_item_status"),
       columns: [
-        { key: "status", label: "Status" },
-        { key: "item_lines", label: "Lines", type: "number" },
-        { key: "quantity", label: "Quantity", type: "number" },
-        { key: "sales_value", label: "Sales Value", type: "money" },
+        { key: "status", label: t("reports_status") },
+        { key: "item_lines", label: t("reports_lines"), type: "number" },
+        { key: "quantity", label: t("reports_quantity"), type: "number" },
+        { key: "sales_value", label: t("reports_sales_value"), type: "money" },
       ],
       rows,
     }],
   });
 };
 
-const getTokenReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getTokenReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("o.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -1463,7 +1481,7 @@ const getTokenReport = async (conn, type, from, to, tenantId, currency, store) =
     ORDER BY o.date DESC, o.token_no DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "token-report",
     currency,
     store,
@@ -1471,28 +1489,28 @@ const getTokenReport = async (conn, type, from, to, tenantId, currency, store) =
     from,
     to,
     summary: [
-      { label: "Tokens", value: rows.length, type: "number" },
-      { label: "Paid Tokens", value: rows.filter((row) => row.payment_status === "paid").length, type: "number" },
-      { label: "Revenue", value: rows.reduce((sum, row) => sum + money(row.total), 0), type: "money" },
+      { label: t("reports_tokens"), value: rows.length, type: "number" },
+      { label: t("reports_paid_tokens"), value: rows.filter((row) => row.payment_status === "paid").length, type: "number" },
+      { label: t("reports_revenue"), value: rows.reduce((sum, row) => sum + money(row.total), 0), type: "money" },
     ],
     tables: [{
-      title: "Token Report",
+      title: t("reports_token_report"),
       columns: [
-        { key: "token_no", label: "Token" },
-        { key: "order_id", label: "Order" },
-        { key: "date", label: "Date", type: "datetime" },
-        { key: "order_type", label: "Order Type" },
-        { key: "customer", label: "Customer" },
-        { key: "status", label: "Status" },
-        { key: "payment_status", label: "Payment" },
-        { key: "total", label: "Total", type: "money" },
+        { key: "token_no", label: t("reports_token") },
+        { key: "order_id", label: t("reports_order") },
+        { key: "date", label: t("reports_date"), type: "datetime" },
+        { key: "order_type", label: t("reports_order_type") },
+        { key: "customer", label: t("reports_customer") },
+        { key: "status", label: t("reports_status") },
+        { key: "payment_status", label: t("reports_payment") },
+        { key: "total", label: t("reports_total"), type: "money" },
       ],
       rows,
     }],
   });
 };
 
-const getQrOrderReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getQrOrderReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("qo.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -1515,7 +1533,7 @@ const getQrOrderReport = async (conn, type, from, to, tenantId, currency, store)
     ORDER BY qo.date DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "qr-order-report",
     currency,
     store,
@@ -1523,29 +1541,29 @@ const getQrOrderReport = async (conn, type, from, to, tenantId, currency, store)
     from,
     to,
     summary: [
-      { label: "QR Orders", value: rows.length, type: "number" },
-      { label: "Quantity", value: rows.reduce((sum, row) => sum + money(row.quantity), 0), type: "number" },
-      { label: "Estimated Total", value: rows.reduce((sum, row) => sum + money(row.estimated_total), 0), type: "money" },
+      { label: t("reports_qr_orders"), value: rows.length, type: "number" },
+      { label: t("reports_quantity"), value: rows.reduce((sum, row) => sum + money(row.quantity), 0), type: "number" },
+      { label: t("reports_estimated_total"), value: rows.reduce((sum, row) => sum + money(row.estimated_total), 0), type: "money" },
     ],
     tables: [{
-      title: "QR Orders",
+      title: t("reports_qr_orders"),
       columns: [
-        { key: "order_id", label: "Order" },
-        { key: "date", label: "Date", type: "datetime" },
-        { key: "order_type", label: "Order Type" },
-        { key: "table_title", label: "Table" },
-        { key: "customer", label: "Customer" },
-        { key: "status", label: "Status" },
-        { key: "payment_status", label: "Payment" },
-        { key: "quantity", label: "Qty", type: "number" },
-        { key: "estimated_total", label: "Estimated Total", type: "money" },
+        { key: "order_id", label: t("reports_order") },
+        { key: "date", label: t("reports_date"), type: "datetime" },
+        { key: "order_type", label: t("reports_order_type") },
+        { key: "table_title", label: t("reports_table") },
+        { key: "customer", label: t("reports_customer") },
+        { key: "status", label: t("reports_status") },
+        { key: "payment_status", label: t("reports_payment") },
+        { key: "quantity", label: t("reports_qty"), type: "number" },
+        { key: "estimated_total", label: t("reports_estimated_total"), type: "money" },
       ],
       rows,
     }],
   });
 };
 
-const getTableTurnoverReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getTableTurnoverReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("o.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -1564,7 +1582,7 @@ const getTableTurnoverReport = async (conn, type, from, to, tenantId, currency, 
     ORDER BY orders DESC, revenue DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "table-turnover",
     currency,
     store,
@@ -1572,27 +1590,27 @@ const getTableTurnoverReport = async (conn, type, from, to, tenantId, currency, 
     from,
     to,
     summary: [
-      { label: "Table Orders", value: rows.reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
-      { label: "Revenue", value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
-      { label: "Tables", value: rows.length, type: "number" },
+      { label: t("reports_table_orders"), value: rows.reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
+      { label: t("reports_revenue"), value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
+      { label: t("reports_tables"), value: rows.length, type: "number" },
     ],
     tables: [{
-      title: "Table Turnover",
+      title: t("reports_table_turnover"),
       columns: [
-        { key: "table_title", label: "Table" },
-        { key: "floor", label: "Floor" },
-        { key: "seating_capacity", label: "Seats", type: "number" },
-        { key: "orders", label: "Orders", type: "number" },
-        { key: "active_days", label: "Active Days", type: "number" },
-        { key: "revenue", label: "Revenue", type: "money" },
-        { key: "average_order_value", label: "AOV", type: "money" },
+        { key: "table_title", label: t("reports_table") },
+        { key: "floor", label: t("reports_floor") },
+        { key: "seating_capacity", label: t("reports_seats"), type: "number" },
+        { key: "orders", label: t("reports_orders"), type: "number" },
+        { key: "active_days", label: t("reports_active_days"), type: "number" },
+        { key: "revenue", label: t("reports_revenue"), type: "money" },
+        { key: "average_order_value", label: t("reports_aov"), type: "money" },
       ],
       rows,
     }],
   });
 };
 
-const getStaffCreatedOrdersReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getStaffCreatedOrdersReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("o.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -1612,7 +1630,7 @@ const getStaffCreatedOrdersReport = async (conn, type, from, to, tenantId, curre
     ORDER BY orders DESC, revenue DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "staff-created-orders",
     currency,
     store,
@@ -1620,22 +1638,22 @@ const getStaffCreatedOrdersReport = async (conn, type, from, to, tenantId, curre
     from,
     to,
     summary: [
-      { label: "Staff", value: rows.length, type: "number" },
-      { label: "Orders", value: rows.reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
-      { label: "Revenue", value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
-      { label: "Paid Orders", value: rows.reduce((sum, row) => sum + money(row.paid_orders), 0), type: "number" },
+      { label: t("reports_staff"), value: rows.length, type: "number" },
+      { label: t("reports_orders"), value: rows.reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
+      { label: t("reports_revenue"), value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
+      { label: t("reports_paid_orders"), value: rows.reduce((sum, row) => sum + money(row.paid_orders), 0), type: "number" },
     ],
     tables: [{
-      title: "Staff Created Orders",
+      title: t("reports_staff_created_orders"),
       columns: [
-        { key: "staff_name", label: "Staff" },
-        { key: "username", label: "Username" },
-        { key: "orders", label: "Orders", type: "number" },
-        { key: "completed_orders", label: "Completed", type: "number" },
-        { key: "cancelled_orders", label: "Cancelled", type: "number" },
-        { key: "paid_orders", label: "Paid", type: "number" },
-        { key: "revenue", label: "Revenue", type: "money" },
-        { key: "average_order_value", label: "AOV", type: "money" },
+        { key: "staff_name", label: t("reports_staff") },
+        { key: "username", label: t("reports_username") },
+        { key: "orders", label: t("reports_orders"), type: "number" },
+        { key: "completed_orders", label: t("reports_completed"), type: "number" },
+        { key: "cancelled_orders", label: t("reports_cancelled"), type: "number" },
+        { key: "paid_orders", label: t("reports_paid"), type: "number" },
+        { key: "revenue", label: t("reports_revenue"), type: "money" },
+        { key: "average_order_value", label: t("reports_aov"), type: "money" },
       ],
       rows,
     }],
@@ -1661,10 +1679,10 @@ const getInventoryRows = async (conn, tenantId, where = "", params = []) => quer
   ORDER BY status ASC, title ASC
 `, [tenantId, ...params]);
 
-const getInventorySummaryReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getInventorySummaryReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const rows = await getInventoryRows(conn, tenantId);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "inventory-summary",
     currency,
     store,
@@ -1672,31 +1690,31 @@ const getInventorySummaryReport = async (conn, type, from, to, tenantId, currenc
     from,
     to,
     summary: [
-      { label: "Inventory Items", value: rows.length, type: "number" },
-      { label: "Low Stock", value: rows.filter((row) => row.status === "low").length, type: "number" },
-      { label: "Out of Stock", value: rows.filter((row) => row.status === "out" || money(row.quantity) <= 0).length, type: "number" },
-      { label: "Units Tracked", value: new Set(rows.map((row) => row.unit).filter(Boolean)).size, type: "number" },
+      { label: t("reports_inventory_items"), value: rows.length, type: "number" },
+      { label: t("reports_low_stock"), value: rows.filter((row) => row.status === "low").length, type: "number" },
+      { label: t("reports_out_of_stock"), value: rows.filter((row) => row.status === "out" || money(row.quantity) <= 0).length, type: "number" },
+      { label: t("reports_units_tracked"), value: new Set(rows.map((row) => row.unit).filter(Boolean)).size, type: "number" },
     ],
     tables: [{
-      title: "Inventory Summary",
+      title: t("reports_inventory_summary"),
       columns: [
-        { key: "title", label: "Item" },
-        { key: "quantity", label: "Quantity", type: "quantity" },
-        { key: "unit", label: "Unit" },
-        { key: "min_quantity_threshold", label: "Minimum", type: "quantity" },
-        { key: "reorder_quantity", label: "Reorder Qty", type: "quantity" },
-        { key: "status", label: "Status" },
-        { key: "updated_at", label: "Updated", type: "datetime" },
+        { key: "title", label: t("reports_item") },
+        { key: "quantity", label: t("reports_quantity"), type: "quantity" },
+        { key: "unit", label: t("reports_unit") },
+        { key: "min_quantity_threshold", label: t("reports_minimum"), type: "quantity" },
+        { key: "reorder_quantity", label: t("reports_reorder_qty"), type: "quantity" },
+        { key: "status", label: t("reports_status") },
+        { key: "updated_at", label: t("reports_updated"), type: "datetime" },
       ],
       rows,
     }],
   });
 };
 
-const getLowStockReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getLowStockReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const rows = await getInventoryRows(conn, tenantId, "AND COALESCE(quantity, 0) <= COALESCE(min_quantity_threshold, 0)");
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "low-stock",
     currency,
     store,
@@ -1704,26 +1722,26 @@ const getLowStockReport = async (conn, type, from, to, tenantId, currency, store
     from,
     to,
     summary: [
-      { label: "Low Stock Items", value: rows.length, type: "number" },
-      { label: "Out of Stock", value: rows.filter((row) => money(row.quantity) <= 0).length, type: "number" },
-      { label: "Reorder Units", value: rows.reduce((sum, row) => sum + money(row.reorder_quantity), 0), type: "quantity" },
+      { label: t("reports_low_stock_items"), value: rows.length, type: "number" },
+      { label: t("reports_out_of_stock"), value: rows.filter((row) => money(row.quantity) <= 0).length, type: "number" },
+      { label: t("reports_reorder_units"), value: rows.reduce((sum, row) => sum + money(row.reorder_quantity), 0), type: "quantity" },
     ],
     tables: [{
-      title: "Low Stock",
+      title: t("reports_low_stock"),
       columns: [
-        { key: "title", label: "Item" },
-        { key: "quantity", label: "Quantity", type: "quantity" },
-        { key: "unit", label: "Unit" },
-        { key: "min_quantity_threshold", label: "Minimum", type: "quantity" },
-        { key: "reorder_quantity", label: "Reorder Qty", type: "quantity" },
-        { key: "status", label: "Status" },
+        { key: "title", label: t("reports_item") },
+        { key: "quantity", label: t("reports_quantity"), type: "quantity" },
+        { key: "unit", label: t("reports_unit") },
+        { key: "min_quantity_threshold", label: t("reports_minimum"), type: "quantity" },
+        { key: "reorder_quantity", label: t("reports_reorder_qty"), type: "quantity" },
+        { key: "status", label: t("reports_status") },
       ],
       rows,
     }],
   });
 };
 
-const getStockMovementsReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getStockMovementsReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("il.created_at", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -1745,7 +1763,7 @@ const getStockMovementsReport = async (conn, type, from, to, tenantId, currency,
     LIMIT 1000
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "stock-movements",
     currency,
     store,
@@ -1753,30 +1771,30 @@ const getStockMovementsReport = async (conn, type, from, to, tenantId, currency,
     from,
     to,
     summary: [
-      { label: "Movements", value: rows.length, type: "number" },
-      { label: "Stock In", value: rows.filter((row) => row.movement_type === "IN").reduce((sum, row) => sum + money(row.quantity_change), 0), type: "quantity" },
-      { label: "Stock Out", value: rows.filter((row) => row.movement_type === "OUT").reduce((sum, row) => sum + money(row.quantity_change), 0), type: "quantity" },
-      { label: "Wastage", value: rows.filter((row) => row.movement_type === "WASTAGE").reduce((sum, row) => sum + money(row.quantity_change), 0), type: "quantity" },
+      { label: t("reports_movements"), value: rows.length, type: "number" },
+      { label: t("reports_stock_in"), value: rows.filter((row) => row.movement_type === "IN").reduce((sum, row) => sum + money(row.quantity_change), 0), type: "quantity" },
+      { label: t("reports_stock_out"), value: rows.filter((row) => row.movement_type === "OUT").reduce((sum, row) => sum + money(row.quantity_change), 0), type: "quantity" },
+      { label: t("reports_wastage"), value: rows.filter((row) => row.movement_type === "WASTAGE").reduce((sum, row) => sum + money(row.quantity_change), 0), type: "quantity" },
     ],
     tables: [{
-      title: "Stock Movements",
+      title: t("reports_stock_movements"),
       columns: [
-        { key: "created_at", label: "Date", type: "datetime" },
-        { key: "item", label: "Item" },
-        { key: "movement_type", label: "Type" },
-        { key: "quantity_change", label: "Change", type: "quantity" },
-        { key: "previous_quantity", label: "Previous", type: "quantity" },
-        { key: "new_quantity", label: "New", type: "quantity" },
-        { key: "unit", label: "Unit" },
-        { key: "staff", label: "Staff" },
-        { key: "note", label: "Note" },
+        { key: "created_at", label: t("reports_date"), type: "datetime" },
+        { key: "item", label: t("reports_item") },
+        { key: "movement_type", label: t("reports_type") },
+        { key: "quantity_change", label: t("reports_change"), type: "quantity" },
+        { key: "previous_quantity", label: t("reports_previous"), type: "quantity" },
+        { key: "new_quantity", label: t("reports_new"), type: "quantity" },
+        { key: "unit", label: t("reports_unit") },
+        { key: "staff", label: t("reports_staff") },
+        { key: "note", label: t("reports_note") },
       ],
       rows,
     }],
   });
 };
 
-const getWastageReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getWastageReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("il.created_at", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -1793,7 +1811,7 @@ const getWastageReport = async (conn, type, from, to, tenantId, currency, store)
     ORDER BY wasted_quantity DESC, movement_count DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "wastage",
     currency,
     store,
@@ -1801,26 +1819,26 @@ const getWastageReport = async (conn, type, from, to, tenantId, currency, store)
     from,
     to,
     summary: [
-      { label: "Wastage Items", value: rows.length, type: "number" },
-      { label: "Wastage Quantity", value: rows.reduce((sum, row) => sum + money(row.wasted_quantity), 0), type: "quantity" },
-      { label: "Movements", value: rows.reduce((sum, row) => sum + money(row.movement_count), 0), type: "number" },
+      { label: t("reports_wastage_items"), value: rows.length, type: "number" },
+      { label: t("reports_wastage_quantity"), value: rows.reduce((sum, row) => sum + money(row.wasted_quantity), 0), type: "quantity" },
+      { label: t("reports_movements"), value: rows.reduce((sum, row) => sum + money(row.movement_count), 0), type: "number" },
     ],
     tables: [{
-      title: "Wastage",
+      title: t("reports_wastage"),
       columns: [
-        { key: "item", label: "Item" },
-        { key: "wasted_quantity", label: "Wasted Qty", type: "quantity" },
-        { key: "unit", label: "Unit" },
-        { key: "movement_count", label: "Movements", type: "number" },
-        { key: "last_wasted_at", label: "Last Wasted", type: "datetime" },
-        { key: "last_note", label: "Last Note" },
+        { key: "item", label: t("reports_item") },
+        { key: "wasted_quantity", label: t("reports_wasted_qty"), type: "quantity" },
+        { key: "unit", label: t("reports_unit") },
+        { key: "movement_count", label: t("reports_movements"), type: "number" },
+        { key: "last_wasted_at", label: t("reports_last_wasted"), type: "datetime" },
+        { key: "last_note", label: t("reports_last_note") },
       ],
       rows,
     }],
   });
 };
 
-const getRecipeUsageReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getRecipeUsageReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("oi.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -1848,7 +1866,7 @@ const getRecipeUsageReport = async (conn, type, from, to, tenantId, currency, st
     ORDER BY estimated_usage DESC, inventory_item ASC
   `, [...params, tenantId]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "recipe-usage",
     currency,
     store,
@@ -1856,31 +1874,31 @@ const getRecipeUsageReport = async (conn, type, from, to, tenantId, currency, st
     from,
     to,
     summary: [
-      { label: "Recipe Lines", value: rows.length, type: "number" },
-      { label: "Estimated Usage", value: rows.reduce((sum, row) => sum + money(row.estimated_usage), 0), type: "quantity" },
-      { label: "Items Sold", value: rows.reduce((sum, row) => sum + money(row.sold_quantity), 0), type: "number" },
+      { label: t("reports_recipe_lines"), value: rows.length, type: "number" },
+      { label: t("reports_estimated_usage"), value: rows.reduce((sum, row) => sum + money(row.estimated_usage), 0), type: "quantity" },
+      { label: t("reports_items_sold"), value: rows.reduce((sum, row) => sum + money(row.sold_quantity), 0), type: "number" },
     ],
     tables: [{
-      title: "Recipe Usage Estimate",
+      title: t("reports_recipe_usage_estimate"),
       columns: [
-        { key: "inventory_item", label: "Inventory Item" },
-        { key: "menu_item", label: "Menu Item" },
-        { key: "variant", label: "Variant" },
-        { key: "addon", label: "Addon" },
-        { key: "recipe_quantity", label: "Recipe Qty", type: "quantity" },
-        { key: "sold_quantity", label: "Sold Qty", type: "number" },
-        { key: "estimated_usage", label: "Estimated Usage", type: "quantity" },
-        { key: "unit", label: "Unit" },
+        { key: "inventory_item", label: t("reports_inventory_item") },
+        { key: "menu_item", label: t("reports_menu_item") },
+        { key: "variant", label: t("reports_variant") },
+        { key: "addon", label: t("reports_addon") },
+        { key: "recipe_quantity", label: t("reports_recipe_qty"), type: "quantity" },
+        { key: "sold_quantity", label: t("reports_sold_qty"), type: "number" },
+        { key: "estimated_usage", label: t("reports_estimated_usage"), type: "quantity" },
+        { key: "unit", label: t("reports_unit") },
       ],
       rows,
     }],
   });
 };
 
-const getStockReorderReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getStockReorderReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const rows = await getInventoryRows(conn, tenantId, "AND COALESCE(quantity, 0) <= COALESCE(min_quantity_threshold, 0)");
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "stock-reorder",
     currency,
     store,
@@ -1888,26 +1906,26 @@ const getStockReorderReport = async (conn, type, from, to, tenantId, currency, s
     from,
     to,
     summary: [
-      { label: "Reorder Items", value: rows.length, type: "number" },
-      { label: "Suggested Quantity", value: rows.reduce((sum, row) => sum + money(row.reorder_quantity), 0), type: "quantity" },
-      { label: "Out of Stock", value: rows.filter((row) => money(row.quantity) <= 0).length, type: "number" },
+      { label: t("reports_reorder_items"), value: rows.length, type: "number" },
+      { label: t("reports_suggested_quantity"), value: rows.reduce((sum, row) => sum + money(row.reorder_quantity), 0), type: "quantity" },
+      { label: t("reports_out_of_stock"), value: rows.filter((row) => money(row.quantity) <= 0).length, type: "number" },
     ],
     tables: [{
-      title: "Reorder List",
+      title: t("reports_reorder_list"),
       columns: [
-        { key: "title", label: "Item" },
-        { key: "quantity", label: "Current", type: "quantity" },
-        { key: "min_quantity_threshold", label: "Minimum", type: "quantity" },
-        { key: "reorder_quantity", label: "Suggested Qty", type: "quantity" },
-        { key: "unit", label: "Unit" },
-        { key: "status", label: "Status" },
+        { key: "title", label: t("reports_item") },
+        { key: "quantity", label: t("reports_current"), type: "quantity" },
+        { key: "min_quantity_threshold", label: t("reports_minimum"), type: "quantity" },
+        { key: "reorder_quantity", label: t("reports_suggested_qty"), type: "quantity" },
+        { key: "unit", label: t("reports_unit") },
+        { key: "status", label: t("reports_status") },
       ],
       rows,
     }],
   });
 };
 
-const getTaxSummaryReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getTaxSummaryReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("created_at", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -1932,7 +1950,7 @@ const getTaxSummaryReport = async (conn, type, from, to, tenantId, currency, sto
     ORDER BY title ASC
   `, [tenantId]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "tax-summary",
     currency,
     store,
@@ -1940,38 +1958,38 @@ const getTaxSummaryReport = async (conn, type, from, to, tenantId, currency, sto
     from,
     to,
     summary: [
-      { label: "Tax Collected", value: rows.reduce((sum, row) => sum + money(row.tax_total), 0), type: "money" },
-      { label: "Taxable Sales", value: rows.reduce((sum, row) => sum + money(row.taxable_sales), 0), type: "money" },
-      { label: "Invoices", value: rows.reduce((sum, row) => sum + money(row.invoices), 0), type: "number" },
-      { label: "Tax Rules", value: taxSetupRows.length, type: "number" },
+      { label: t("reports_tax_collected"), value: rows.reduce((sum, row) => sum + money(row.tax_total), 0), type: "money" },
+      { label: t("reports_taxable_sales"), value: rows.reduce((sum, row) => sum + money(row.taxable_sales), 0), type: "money" },
+      { label: t("reports_invoices"), value: rows.reduce((sum, row) => sum + money(row.invoices), 0), type: "number" },
+      { label: t("reports_tax_rules"), value: taxSetupRows.length, type: "number" },
     ],
     tables: [
       {
-        title: "Tax by Date",
+        title: t("reports_tax_by_date"),
         columns: [
-          { key: "date", label: "Date", type: "date" },
-          { key: "invoices", label: "Invoices", type: "number" },
-          { key: "taxable_sales", label: "Taxable Sales", type: "money" },
-          { key: "tax_total", label: "Tax", type: "money" },
-          { key: "revenue", label: "Revenue", type: "money" },
+          { key: "date", label: t("reports_date"), type: "date" },
+          { key: "invoices", label: t("reports_invoices"), type: "number" },
+          { key: "taxable_sales", label: t("reports_taxable_sales"), type: "money" },
+          { key: "tax_total", label: t("reports_tax"), type: "money" },
+          { key: "revenue", label: t("reports_revenue"), type: "money" },
         ],
         rows,
       },
       {
-        title: "Tax Setup",
+        title: t("reports_tax_setup"),
         columns: [
-          { key: "title", label: "Tax" },
-          { key: "rate", label: "Rate", type: "number" },
-          { key: "type", label: "Type" },
+          { key: "title", label: t("reports_tax") },
+          { key: "rate", label: t("reports_rate"), type: "number" },
+          { key: "type", label: t("reports_type") },
         ],
         rows: taxSetupRows,
       },
     ],
-    charts: [{ type: "line", title: "Tax Trend", data: [...rows].reverse() }],
+    charts: [{ type: "line", title: t("reports_tax_trend"), data: [...rows].reverse() }],
   });
 };
 
-const getTaxByItemReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getTaxByItemReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("oi.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -1996,7 +2014,7 @@ const getTaxByItemReport = async (conn, type, from, to, tenantId, currency, stor
     ORDER BY estimated_tax DESC, item_sales DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "tax-by-item",
     currency,
     store,
@@ -2004,28 +2022,28 @@ const getTaxByItemReport = async (conn, type, from, to, tenantId, currency, stor
     from,
     to,
     summary: [
-      { label: "Estimated Tax", value: rows.reduce((sum, row) => sum + money(row.estimated_tax), 0), type: "money" },
-      { label: "Item Sales", value: rows.reduce((sum, row) => sum + money(row.item_sales), 0), type: "money" },
-      { label: "Items", value: rows.length, type: "number" },
+      { label: t("reports_estimated_tax"), value: rows.reduce((sum, row) => sum + money(row.estimated_tax), 0), type: "money" },
+      { label: t("reports_item_sales"), value: rows.reduce((sum, row) => sum + money(row.item_sales), 0), type: "money" },
+      { label: t("reports_items"), value: rows.length, type: "number" },
     ],
     tables: [{
-      title: "Tax by Item",
+      title: t("reports_tax_by_item"),
       columns: [
-        { key: "item", label: "Item" },
-        { key: "category", label: "Category" },
-        { key: "tax", label: "Tax" },
-        { key: "tax_rate", label: "Rate", type: "number" },
-        { key: "tax_type", label: "Type" },
-        { key: "quantity_sold", label: "Qty", type: "number" },
-        { key: "item_sales", label: "Item Sales", type: "money" },
-        { key: "estimated_tax", label: "Estimated Tax", type: "money" },
+        { key: "item", label: t("reports_item") },
+        { key: "category", label: t("reports_category") },
+        { key: "tax", label: t("reports_tax") },
+        { key: "tax_rate", label: t("reports_rate"), type: "number" },
+        { key: "tax_type", label: t("reports_type") },
+        { key: "quantity_sold", label: t("reports_qty"), type: "number" },
+        { key: "item_sales", label: t("reports_item_sales"), type: "money" },
+        { key: "estimated_tax", label: t("reports_estimated_tax"), type: "money" },
       ],
       rows,
     }],
   });
 };
 
-const getServiceChargeReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getServiceChargeReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("created_at", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -2040,7 +2058,7 @@ const getServiceChargeReport = async (conn, type, from, to, tenantId, currency, 
     ORDER BY date DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "service-charge",
     currency,
     store,
@@ -2048,26 +2066,26 @@ const getServiceChargeReport = async (conn, type, from, to, tenantId, currency, 
     from,
     to,
     summary: [
-      { label: "Service Charge", value: rows.reduce((sum, row) => sum + money(row.service_charge_total), 0), type: "money" },
-      { label: "Revenue", value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
-      { label: "Invoices", value: rows.reduce((sum, row) => sum + money(row.invoices), 0), type: "number" },
+      { label: t("reports_service_charge"), value: rows.reduce((sum, row) => sum + money(row.service_charge_total), 0), type: "money" },
+      { label: t("reports_revenue"), value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
+      { label: t("reports_invoices"), value: rows.reduce((sum, row) => sum + money(row.invoices), 0), type: "number" },
     ],
     tables: [{
-      title: "Service Charge by Date",
+      title: t("reports_service_charge_by_date"),
       columns: [
-        { key: "date", label: "Date", type: "date" },
-        { key: "invoices", label: "Invoices", type: "number" },
-        { key: "net_sales", label: "Net Sales", type: "money" },
-        { key: "service_charge_total", label: "Service Charge", type: "money" },
-        { key: "revenue", label: "Revenue", type: "money" },
+        { key: "date", label: t("reports_date"), type: "date" },
+        { key: "invoices", label: t("reports_invoices"), type: "number" },
+        { key: "net_sales", label: t("reports_net_sales"), type: "money" },
+        { key: "service_charge_total", label: t("reports_service_charge"), type: "money" },
+        { key: "revenue", label: t("reports_revenue"), type: "money" },
       ],
       rows,
     }],
-    charts: [{ type: "line", title: "Service Charge Trend", data: [...rows].reverse() }],
+    charts: [{ type: "line", title: t("reports_service_charge_trend"), data: [...rows].reverse() }],
   });
 };
 
-const getDailyCloseReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getDailyCloseReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const invoiceFilter = getFilterCondition("created_at", type, from, to);
   const orderFilter = getFilterCondition("date", type, from, to);
   const paymentFilter = getFilterCondition("i.created_at", type, from, to);
@@ -2122,7 +2140,7 @@ const getDailyCloseReport = async (conn, type, from, to, tenantId, currency, sto
 
   const rows = [...rowsByDate.values()].sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "daily-close",
     currency,
     store,
@@ -2130,31 +2148,31 @@ const getDailyCloseReport = async (conn, type, from, to, tenantId, currency, sto
     from,
     to,
     summary: [
-      { label: "Revenue", value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
-      { label: "Orders", value: rows.reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
-      { label: "Tax", value: rows.reduce((sum, row) => sum + money(row.tax_total), 0), type: "money" },
-      { label: "Service Charge", value: rows.reduce((sum, row) => sum + money(row.service_charge_total), 0), type: "money" },
+      { label: t("reports_revenue"), value: rows.reduce((sum, row) => sum + money(row.revenue), 0), type: "money" },
+      { label: t("reports_orders"), value: rows.reduce((sum, row) => sum + money(row.orders), 0), type: "number" },
+      { label: t("reports_tax"), value: rows.reduce((sum, row) => sum + money(row.tax_total), 0), type: "money" },
+      { label: t("reports_service_charge"), value: rows.reduce((sum, row) => sum + money(row.service_charge_total), 0), type: "money" },
     ],
     tables: [{
-      title: "Daily Close",
+      title: t("reports_daily_close"),
       columns: [
-        { key: "date", label: "Date", type: "date" },
-        { key: "orders", label: "Orders", type: "number" },
-        { key: "invoices", label: "Invoices", type: "number" },
-        { key: "net_sales", label: "Net Sales", type: "money" },
-        { key: "tax_total", label: "Tax", type: "money" },
-        { key: "service_charge_total", label: "Service Charge", type: "money" },
-        { key: "revenue", label: "Revenue", type: "money" },
-        { key: "unpaid_orders", label: "Unpaid", type: "number" },
-        { key: "cancelled_orders", label: "Cancelled", type: "number" },
-        { key: "payment_mix", label: "Payment Mix" },
+        { key: "date", label: t("reports_date"), type: "date" },
+        { key: "orders", label: t("reports_orders"), type: "number" },
+        { key: "invoices", label: t("reports_invoices"), type: "number" },
+        { key: "net_sales", label: t("reports_net_sales"), type: "money" },
+        { key: "tax_total", label: t("reports_tax"), type: "money" },
+        { key: "service_charge_total", label: t("reports_service_charge"), type: "money" },
+        { key: "revenue", label: t("reports_revenue"), type: "money" },
+        { key: "unpaid_orders", label: t("reports_unpaid"), type: "number" },
+        { key: "cancelled_orders", label: t("reports_cancelled"), type: "number" },
+        { key: "payment_mix", label: t("reports_payment_mix") },
       ],
       rows,
     }],
   });
 };
 
-const getInvoiceRegisterReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getInvoiceRegisterReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("i.created_at", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -2174,7 +2192,7 @@ const getInvoiceRegisterReport = async (conn, type, from, to, tenantId, currency
     LIMIT 2000
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "invoice-register",
     currency,
     store,
@@ -2182,29 +2200,29 @@ const getInvoiceRegisterReport = async (conn, type, from, to, tenantId, currency
     from,
     to,
     summary: [
-      { label: "Invoices", value: rows.length, type: "number" },
-      { label: "Revenue", value: rows.reduce((sum, row) => sum + money(row.total), 0), type: "money" },
-      { label: "Tax", value: rows.reduce((sum, row) => sum + money(row.tax_total), 0), type: "money" },
-      { label: "Service Charge", value: rows.reduce((sum, row) => sum + money(row.service_charge_total), 0), type: "money" },
+      { label: t("reports_invoices"), value: rows.length, type: "number" },
+      { label: t("reports_revenue"), value: rows.reduce((sum, row) => sum + money(row.total), 0), type: "money" },
+      { label: t("reports_tax"), value: rows.reduce((sum, row) => sum + money(row.tax_total), 0), type: "money" },
+      { label: t("reports_service_charge"), value: rows.reduce((sum, row) => sum + money(row.service_charge_total), 0), type: "money" },
     ],
     tables: [{
-      title: "Invoice Register",
+      title: t("reports_invoice_register"),
       columns: [
-        { key: "invoice_id", label: "Invoice" },
-        { key: "created_at", label: "Created", type: "datetime" },
-        { key: "payment_type", label: "Payment" },
-        { key: "staff", label: "Staff" },
-        { key: "net_sales", label: "Net Sales", type: "money" },
-        { key: "tax_total", label: "Tax", type: "money" },
-        { key: "service_charge_total", label: "Service", type: "money" },
-        { key: "total", label: "Total", type: "money" },
+        { key: "invoice_id", label: t("reports_invoice") },
+        { key: "created_at", label: t("reports_created"), type: "datetime" },
+        { key: "payment_type", label: t("reports_payment") },
+        { key: "staff", label: t("reports_staff") },
+        { key: "net_sales", label: t("reports_net_sales"), type: "money" },
+        { key: "tax_total", label: t("reports_tax"), type: "money" },
+        { key: "service_charge_total", label: t("reports_service"), type: "money" },
+        { key: "total", label: t("reports_total"), type: "money" },
       ],
       rows,
     }],
   });
 };
 
-const getReservationSummaryReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getReservationSummaryReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("r.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -2221,7 +2239,7 @@ const getReservationSummaryReport = async (conn, type, from, to, tenantId, curre
     ORDER BY reservations DESC, guests DESC
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "reservation-summary",
     currency,
     store,
@@ -2229,26 +2247,26 @@ const getReservationSummaryReport = async (conn, type, from, to, tenantId, curre
     from,
     to,
     summary: [
-      { label: "Reservations", value: rows.reduce((sum, row) => sum + money(row.reservations), 0), type: "number" },
-      { label: "Guests", value: rows.reduce((sum, row) => sum + money(row.guests), 0), type: "number" },
-      { label: "Statuses", value: new Set(rows.map((row) => row.status)).size, type: "number" },
+      { label: t("reports_reservations"), value: rows.reduce((sum, row) => sum + money(row.reservations), 0), type: "number" },
+      { label: t("reports_guests"), value: rows.reduce((sum, row) => sum + money(row.guests), 0), type: "number" },
+      { label: t("reports_statuses"), value: new Set(rows.map((row) => row.status)).size, type: "number" },
     ],
     tables: [{
-      title: "Reservation Summary",
+      title: t("reports_reservation_summary"),
       columns: [
-        { key: "status", label: "Status" },
-        { key: "table_title", label: "Table" },
-        { key: "reservations", label: "Reservations", type: "number" },
-        { key: "guests", label: "Guests", type: "number" },
-        { key: "first_reservation", label: "First", type: "datetime" },
-        { key: "last_reservation", label: "Last", type: "datetime" },
+        { key: "status", label: t("reports_status") },
+        { key: "table_title", label: t("reports_table") },
+        { key: "reservations", label: t("reports_reservations"), type: "number" },
+        { key: "guests", label: t("reports_guests"), type: "number" },
+        { key: "first_reservation", label: t("reports_first"), type: "datetime" },
+        { key: "last_reservation", label: t("reports_last"), type: "datetime" },
       ],
       rows,
     }],
   });
 };
 
-const getUpcomingReservationsReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getUpcomingReservationsReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("r.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -2269,7 +2287,7 @@ const getUpcomingReservationsReport = async (conn, type, from, to, tenantId, cur
     LIMIT 500
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "upcoming-reservations",
     currency,
     store,
@@ -2277,28 +2295,28 @@ const getUpcomingReservationsReport = async (conn, type, from, to, tenantId, cur
     from,
     to,
     summary: [
-      { label: "Upcoming", value: rows.length, type: "number" },
-      { label: "Guests", value: rows.reduce((sum, row) => sum + money(row.people_count), 0), type: "number" },
-      { label: "Tables", value: new Set(rows.map((row) => row.table_title).filter((value) => value && value !== "-")).size, type: "number" },
+      { label: t("reports_upcoming"), value: rows.length, type: "number" },
+      { label: t("reports_guests"), value: rows.reduce((sum, row) => sum + money(row.people_count), 0), type: "number" },
+      { label: t("reports_tables"), value: new Set(rows.map((row) => row.table_title).filter((value) => value && value !== "-")).size, type: "number" },
     ],
     tables: [{
-      title: "Upcoming Reservations",
+      title: t("reports_upcoming_reservations"),
       columns: [
-        { key: "date", label: "Date", type: "datetime" },
-        { key: "customer", label: "Customer" },
-        { key: "phone", label: "Phone" },
-        { key: "table_title", label: "Table" },
-        { key: "people_count", label: "Guests", type: "number" },
-        { key: "status", label: "Status" },
-        { key: "unique_code", label: "Code" },
-        { key: "notes", label: "Notes" },
+        { key: "date", label: t("reports_date"), type: "datetime" },
+        { key: "customer", label: t("reports_customer") },
+        { key: "phone", label: t("reports_phone") },
+        { key: "table_title", label: t("reports_table") },
+        { key: "people_count", label: t("reports_guests"), type: "number" },
+        { key: "status", label: t("reports_status") },
+        { key: "unique_code", label: t("reports_code") },
+        { key: "notes", label: t("reports_notes") },
       ],
       rows,
     }],
   });
 };
 
-const getReservationNoShowReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getReservationNoShowReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("r.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -2324,7 +2342,7 @@ const getReservationNoShowReport = async (conn, type, from, to, tenantId, curren
     LIMIT 500
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "reservation-no-show",
     currency,
     store,
@@ -2332,27 +2350,27 @@ const getReservationNoShowReport = async (conn, type, from, to, tenantId, curren
     from,
     to,
     summary: [
-      { label: "Possible No-Shows", value: rows.length, type: "number" },
-      { label: "Guests", value: rows.reduce((sum, row) => sum + money(row.people_count), 0), type: "number" },
-      { label: "Explicit No-Show", value: rows.filter((row) => ["no-show", "no show", "noshow"].includes(String(row.status || "").toLowerCase())).length, type: "number" },
+      { label: t("reports_possible_no_shows"), value: rows.length, type: "number" },
+      { label: t("reports_guests"), value: rows.reduce((sum, row) => sum + money(row.people_count), 0), type: "number" },
+      { label: t("reports_explicit_no_show"), value: rows.filter((row) => ["no-show", "no show", "noshow"].includes(String(row.status || "").toLowerCase())).length, type: "number" },
     ],
     tables: [{
-      title: "Possible Reservation No-Shows",
+      title: t("reports_possible_reservation_no_shows"),
       columns: [
-        { key: "date", label: "Date", type: "datetime" },
-        { key: "customer", label: "Customer" },
-        { key: "phone", label: "Phone" },
-        { key: "table_title", label: "Table" },
-        { key: "people_count", label: "Guests", type: "number" },
-        { key: "status", label: "Status" },
-        { key: "notes", label: "Notes" },
+        { key: "date", label: t("reports_date"), type: "datetime" },
+        { key: "customer", label: t("reports_customer") },
+        { key: "phone", label: t("reports_phone") },
+        { key: "table_title", label: t("reports_table") },
+        { key: "people_count", label: t("reports_guests"), type: "number" },
+        { key: "status", label: t("reports_status") },
+        { key: "notes", label: t("reports_notes") },
       ],
       rows,
     }],
   });
 };
 
-const getFeedbackSummaryReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getFeedbackSummaryReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("f.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -2373,7 +2391,7 @@ const getFeedbackSummaryReport = async (conn, type, from, to, tenantId, currency
   const totalFeedback = rows.reduce((sum, row) => sum + money(row.feedback_count), 0);
   const weightedAverage = (key) => totalFeedback ? rows.reduce((sum, row) => sum + money(row[key]) * money(row.feedback_count), 0) / totalFeedback : 0;
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "feedback-summary",
     currency,
     store,
@@ -2381,30 +2399,30 @@ const getFeedbackSummaryReport = async (conn, type, from, to, tenantId, currency
     from,
     to,
     summary: [
-      { label: "Feedback", value: totalFeedback, type: "number" },
-      { label: "Average Rating", value: weightedAverage("average_rating"), type: "number" },
-      { label: "Service", value: weightedAverage("service_rating"), type: "number" },
-      { label: "Recommend", value: weightedAverage("recommend_rating"), type: "number" },
+      { label: t("reports_feedback"), value: totalFeedback, type: "number" },
+      { label: t("reports_average_rating"), value: weightedAverage("average_rating"), type: "number" },
+      { label: t("reports_service"), value: weightedAverage("service_rating"), type: "number" },
+      { label: t("reports_recommend"), value: weightedAverage("recommend_rating"), type: "number" },
     ],
     tables: [{
-      title: "Feedback Summary",
+      title: t("reports_feedback_summary"),
       columns: [
-        { key: "date", label: "Date", type: "date" },
-        { key: "feedback_count", label: "Feedback", type: "number" },
-        { key: "average_rating", label: "Average", type: "number" },
-        { key: "food_quality_rating", label: "Food", type: "number" },
-        { key: "service_rating", label: "Service", type: "number" },
-        { key: "staff_behavior_rating", label: "Staff", type: "number" },
-        { key: "ambiance_rating", label: "Ambiance", type: "number" },
-        { key: "recommend_rating", label: "Recommend", type: "number" },
+        { key: "date", label: t("reports_date"), type: "date" },
+        { key: "feedback_count", label: t("reports_feedback"), type: "number" },
+        { key: "average_rating", label: t("reports_average"), type: "number" },
+        { key: "food_quality_rating", label: t("reports_food"), type: "number" },
+        { key: "service_rating", label: t("reports_service"), type: "number" },
+        { key: "staff_behavior_rating", label: t("reports_staff"), type: "number" },
+        { key: "ambiance_rating", label: t("reports_ambiance"), type: "number" },
+        { key: "recommend_rating", label: t("reports_recommend"), type: "number" },
       ],
       rows,
     }],
-    charts: [{ type: "line", title: "Feedback Trend", data: [...rows].reverse() }],
+    charts: [{ type: "line", title: t("reports_feedback_trend"), data: [...rows].reverse() }],
   });
 };
 
-const getNegativeFeedbackReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getNegativeFeedbackReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("f.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -2434,7 +2452,7 @@ const getNegativeFeedbackReport = async (conn, type, from, to, tenantId, currenc
     LIMIT 500
   `, [tenantId, ...params]);
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "negative-feedback",
     currency,
     store,
@@ -2442,29 +2460,29 @@ const getNegativeFeedbackReport = async (conn, type, from, to, tenantId, currenc
     from,
     to,
     summary: [
-      { label: "Negative Feedback", value: rows.length, type: "number" },
-      { label: "Avg Rating", value: rows.length ? rows.reduce((sum, row) => sum + money(row.average_rating), 0) / rows.length : 0, type: "number" },
-      { label: "With Remarks", value: rows.filter((row) => row.remarks).length, type: "number" },
+      { label: t("reports_negative_feedback"), value: rows.length, type: "number" },
+      { label: t("reports_avg_rating"), value: rows.length ? rows.reduce((sum, row) => sum + money(row.average_rating), 0) / rows.length : 0, type: "number" },
+      { label: t("reports_with_remarks"), value: rows.filter((row) => row.remarks).length, type: "number" },
     ],
     tables: [{
-      title: "Negative Feedback",
+      title: t("reports_negative_feedback"),
       columns: [
-        { key: "date", label: "Date", type: "datetime" },
-        { key: "invoice_id", label: "Invoice" },
-        { key: "customer", label: "Customer" },
-        { key: "phone", label: "Phone" },
-        { key: "average_rating", label: "Average", type: "number" },
-        { key: "food_quality_rating", label: "Food", type: "number" },
-        { key: "service_rating", label: "Service", type: "number" },
-        { key: "recommend_rating", label: "Recommend", type: "number" },
-        { key: "remarks", label: "Remarks" },
+        { key: "date", label: t("reports_date"), type: "datetime" },
+        { key: "invoice_id", label: t("reports_invoice") },
+        { key: "customer", label: t("reports_customer") },
+        { key: "phone", label: t("reports_phone") },
+        { key: "average_rating", label: t("reports_average"), type: "number" },
+        { key: "food_quality_rating", label: t("reports_food"), type: "number" },
+        { key: "service_rating", label: t("reports_service"), type: "number" },
+        { key: "recommend_rating", label: t("reports_recommend"), type: "number" },
+        { key: "remarks", label: t("reports_remarks") },
       ],
       rows,
     }],
   });
 };
 
-const getRecommendationScoreReport = async (conn, type, from, to, tenantId, currency, store) => {
+const getRecommendationScoreReport = async (conn, type, from, to, tenantId, currency, store, t = (key) => key) => {
   const { filter, params } = getFilterCondition("f.date", type, from, to);
   const rows = await query(conn, `
     SELECT
@@ -2488,7 +2506,7 @@ const getRecommendationScoreReport = async (conn, type, from, to, tenantId, curr
   const detractors = rows.filter((row) => row.recommendation_group === "Detractors").reduce((sum, row) => sum + money(row.feedback_count), 0);
   const score = total ? ((promoters - detractors) / total) * 100 : 0;
 
-  return makeReport({
+  return makeReport({ t,
     reportId: "recommendation-score",
     currency,
     store,
@@ -2496,22 +2514,22 @@ const getRecommendationScoreReport = async (conn, type, from, to, tenantId, curr
     from,
     to,
     summary: [
-      { label: "Recommendation Score", value: score, type: "number" },
-      { label: "Feedback", value: total, type: "number" },
-      { label: "Promoters", value: promoters, type: "number" },
-      { label: "Detractors", value: detractors, type: "number" },
+      { label: t("reports_recommendation_score"), value: score, type: "number" },
+      { label: t("reports_feedback"), value: total, type: "number" },
+      { label: t("reports_promoters"), value: promoters, type: "number" },
+      { label: t("reports_detractors"), value: detractors, type: "number" },
     ],
     tables: [{
-      title: "Recommendation Score",
+      title: t("reports_recommendation_score"),
       columns: [
-        { key: "recommendation_group", label: "Group" },
-        { key: "feedback_count", label: "Feedback", type: "number" },
-        { key: "average_recommend_rating", label: "Avg Recommend", type: "number" },
-        { key: "average_rating", label: "Avg Rating", type: "number" },
+        { key: "recommendation_group", label: t("reports_group") },
+        { key: "feedback_count", label: t("reports_feedback"), type: "number" },
+        { key: "average_recommend_rating", label: t("reports_avg_recommend"), type: "number" },
+        { key: "average_rating", label: t("reports_avg_rating"), type: "number" },
       ],
       rows,
     }],
-    charts: [{ type: "pie", title: "Recommendation Mix", data: rows }],
+    charts: [{ type: "pie", title: t("reports_recommendation_mix"), data: rows }],
   });
 };
 
@@ -2519,8 +2537,9 @@ const REPORT_BUILDERS = {
   "sales-summary": getSalesSummaryReport,
   "gross-sales": getGrossSalesReport,
   "net-sales": getNetSalesReport,
-  "sales-by-hour": (conn, type, from, to, tenantId, currency, store) => getGroupedInvoiceReport({
+  "sales-by-hour": (conn, type, from, to, tenantId, currency, store, t) => getGroupedInvoiceReport({
     conn,
+    t,
     reportId: "sales-by-hour",
     type,
     from,
@@ -2531,18 +2550,19 @@ const REPORT_BUILDERS = {
     groupSelect: "LPAD(HOUR(i.created_at), 2, '0') AS hour",
     groupBy: "LPAD(HOUR(i.created_at), 2, '0')",
     orderBy: "hour ASC",
-    tableTitle: "Sales by Hour",
-    summaryLabel: "Revenue",
+    tableTitleKey: "reports_sales_by_hour",
+    summaryLabelKey: "reports_revenue",
     columns: [
-      { key: "hour", label: "Hour" },
-      { key: "invoices", label: "Invoices", type: "number" },
-      { key: "net_sales", label: "Net Sales", type: "money" },
-      { key: "revenue", label: "Revenue", type: "money" },
-      { key: "average_order_value", label: "AOV", type: "money" },
+      { key: "hour", label: t("reports_hour") },
+      { key: "invoices", label: t("reports_invoices"), type: "number" },
+      { key: "net_sales", label: t("reports_net_sales"), type: "money" },
+      { key: "revenue", label: t("reports_revenue"), type: "money" },
+      { key: "average_order_value", label: t("reports_aov"), type: "money" },
     ],
   }),
-  "sales-by-day": (conn, type, from, to, tenantId, currency, store) => getGroupedInvoiceReport({
+  "sales-by-day": (conn, type, from, to, tenantId, currency, store, t) => getGroupedInvoiceReport({
     conn,
+    t,
     reportId: "sales-by-day",
     type,
     from,
@@ -2553,18 +2573,19 @@ const REPORT_BUILDERS = {
     groupSelect: "DATE(i.created_at) AS date",
     groupBy: "DATE(i.created_at)",
     orderBy: "date DESC",
-    tableTitle: "Sales by Day",
-    summaryLabel: "Revenue",
+    tableTitleKey: "reports_sales_by_day",
+    summaryLabelKey: "reports_revenue",
     columns: [
-      { key: "date", label: "Date", type: "date" },
-      { key: "invoices", label: "Invoices", type: "number" },
-      { key: "net_sales", label: "Net Sales", type: "money" },
-      { key: "revenue", label: "Revenue", type: "money" },
-      { key: "average_order_value", label: "AOV", type: "money" },
+      { key: "date", label: t("reports_date"), type: "date" },
+      { key: "invoices", label: t("reports_invoices"), type: "number" },
+      { key: "net_sales", label: t("reports_net_sales"), type: "money" },
+      { key: "revenue", label: t("reports_revenue"), type: "money" },
+      { key: "average_order_value", label: t("reports_aov"), type: "money" },
     ],
   }),
-  "sales-by-month": (conn, type, from, to, tenantId, currency, store) => getGroupedInvoiceReport({
+  "sales-by-month": (conn, type, from, to, tenantId, currency, store, t) => getGroupedInvoiceReport({
     conn,
+    t,
     reportId: "sales-by-month",
     type,
     from,
@@ -2575,14 +2596,14 @@ const REPORT_BUILDERS = {
     groupSelect: "DATE_FORMAT(i.created_at, '%Y-%m') AS month",
     groupBy: "DATE_FORMAT(i.created_at, '%Y-%m')",
     orderBy: "month DESC",
-    tableTitle: "Sales by Month",
-    summaryLabel: "Revenue",
+    tableTitleKey: "reports_sales_by_month",
+    summaryLabelKey: "reports_revenue",
     columns: [
-      { key: "month", label: "Month" },
-      { key: "invoices", label: "Invoices", type: "number" },
-      { key: "net_sales", label: "Net Sales", type: "money" },
-      { key: "revenue", label: "Revenue", type: "money" },
-      { key: "average_order_value", label: "AOV", type: "money" },
+      { key: "month", label: t("reports_month") },
+      { key: "invoices", label: t("reports_invoices"), type: "number" },
+      { key: "net_sales", label: t("reports_net_sales"), type: "money" },
+      { key: "revenue", label: t("reports_revenue"), type: "money" },
+      { key: "average_order_value", label: t("reports_aov"), type: "money" },
     ],
   }),
   "sales-by-order-type": getSalesByOrderTypeReport,
@@ -2591,8 +2612,8 @@ const REPORT_BUILDERS = {
   "voids-cancellations": getVoidsCancellationsReport,
   "average-order-value": getAverageOrderValueReport,
   "payment-summary": getPaymentSummaryReport,
-  "cash-report": (conn, type, from, to, tenantId, currency, store) => getPaymentKeywordReport(conn, type, from, to, tenantId, currency, store, "cash-report", "Cash Report", ["cash"]),
-  "card-report": (conn, type, from, to, tenantId, currency, store) => getPaymentKeywordReport(conn, type, from, to, tenantId, currency, store, "card-report", "Card Report", ["card", "credit", "debit"]),
+  "cash-report": (conn, type, from, to, tenantId, currency, store, t) => getPaymentKeywordReport(conn, type, from, to, tenantId, currency, store, "cash-report", "reports_cash_report", ["cash"], t),
+  "card-report": (conn, type, from, to, tenantId, currency, store, t) => getPaymentKeywordReport(conn, type, from, to, tenantId, currency, store, "card-report", "reports_card_report", ["card", "credit", "debit"], t),
   "unpaid-orders": getUnpaidOrdersReport,
   "payment-type-mix": getPaymentTypeMixReport,
   "top-selling-items": getTopSellingItemsReport,
@@ -2633,7 +2654,7 @@ const REPORT_BUILDERS = {
   "recommendation-score": getRecommendationScoreReport,
 };
 
-exports.getReportByIdDB = async (reportId, type, from, to, tenantId) => {
+exports.getReportByIdDB = async (reportId, type, from, to, tenantId, t = (key) => key) => {
   const builder = REPORT_BUILDERS[reportId];
   if (!builder) {
     const error = new Error("Unknown report");
@@ -2652,7 +2673,7 @@ exports.getReportByIdDB = async (reportId, type, from, to, tenantId) => {
       email: storeSettings?.email || "",
       image: storeSettings?.store_image || null,
     };
-    return builder(conn, type, from, to, tenantId, currency, store);
+    return builder(conn, type, from, to, tenantId, currency, store, t);
   } finally {
     conn.release();
   }
