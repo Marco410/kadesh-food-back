@@ -1,27 +1,13 @@
 const { nanoid } = require("nanoid");
 const { getStoreSettingDB, setStoreSettingDB, uploadStoreImageDB, deleteStoreImageDB, getPrintSettingDB, setPrintSettingDB, getTaxesDB, addTaxDB, updateTaxDB, deleteTaxDB, getTaxDB, addPaymentTypeDB, getPaymentTypesDB, updatePaymentTypeDB, deletePaymentTypeDB, togglePaymentTypeDB, addStoreTableDB, getStoreTablesDB, updateStoreTableDB, deleteStoreTableDB, addCategoryDB, getCategoriesDB, updateCategoryDB, deleteCategoryDB, getQRMenuCodeDB, updateQRMenuCodeDB, changeCategoryVisibiltyDB, updateServiceChargeDB, getServiceChargeDB } = require("../services/settings.service");
-const path = require("path");
-const fs = require("fs");
+const {
+    validateImageFile,
+    uploadImage,
+    deleteImageByUrl,
+    buildStoreImageKey,
+} = require("../services/storage.service");
 
 const STORE_IMAGE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
-
-const getTenantPublicDir = (tenantId) =>
-    path.resolve(__dirname, "../../public", String(tenantId));
-
-const getSafeStoreImagePath = (tenantId, uniqueId) => {
-    if (typeof uniqueId !== "string" || !STORE_IMAGE_ID_PATTERN.test(uniqueId)) {
-        return null;
-    }
-
-    const tenantPublicDir = getTenantPublicDir(tenantId);
-    const imagePath = path.resolve(tenantPublicDir, uniqueId);
-
-    if (imagePath !== path.join(tenantPublicDir, path.basename(imagePath))) {
-        return null;
-    }
-
-    return imagePath;
-};
 
 exports.getStoreDetails = async (req, res) => {
     try {
@@ -91,33 +77,39 @@ exports.setStoreDetails = async (req, res) => {
 exports.uploadStoreImage = async (req, res) => {
     try {
         const tenantId = req.user.tenant_id;
+        const file = req.files?.store_image;
+        const validation = validateImageFile(file);
 
-        const file = req.files.store_image;
-
-        const uniqueId = nanoid();
-
-        const tenantPublicDir = getTenantPublicDir(tenantId);
-        const imagePath = path.join(tenantPublicDir, uniqueId);
-
-        if(!fs.existsSync(tenantPublicDir)) {
-            fs.mkdirSync(tenantPublicDir, { recursive: true });
+        if (!validation.valid) {
+            return res.status(400).json({
+                success: false,
+                message: req.__(validation.message),
+            });
         }
 
-        const imageURL = `/public/${tenantId}/${uniqueId}`;
+        const storeSettings = await getStoreSettingDB(tenantId);
+        if (storeSettings?.store_image) {
+            await deleteImageByUrl(storeSettings.store_image);
+        }
 
-        await file.mv(imagePath);
+        const uniqueId = nanoid();
+        const imageURL = await uploadImage(
+            file,
+            buildStoreImageKey(tenantId, uniqueId)
+        );
+
         await uploadStoreImageDB(imageURL, uniqueId, tenantId);
 
         return res.status(200).json({
             success: true,
             message: req.__("store_image_uploaded"),
-            imageURL: imageURL
-        })
+            imageURL,
+        });
     } catch (error) {
         console.error(error);
         return res.status(500).json({
             success: false,
-            message: req.__("something_went_wrong_try_later")
+            message: req.__("something_went_wrong_try_later"),
         });
     }
 };
@@ -127,25 +119,23 @@ exports.deleteStoreImage = async (req, res) => {
         const tenantId = req.user.tenant_id;
         const uniqueId = req.body.uniqueId;
 
-        const imagePath = getSafeStoreImagePath(tenantId, uniqueId);
-
-        if(!imagePath){
+        if (typeof uniqueId !== "string" || !STORE_IMAGE_ID_PATTERN.test(uniqueId)) {
             return res.status(200).json({
                 success: false,
                 message: req.__("invalid_request"),
-            })
+            });
         }
 
         const storeSettings = await getStoreSettingDB(tenantId);
-        if(storeSettings?.unique_id !== uniqueId) {
+        if (storeSettings?.unique_id !== uniqueId) {
             return res.status(200).json({
                 success: false,
                 message: req.__("invalid_request"),
-            })
+            });
         }
 
-        if(fs.existsSync(imagePath)) {
-            fs.unlinkSync(imagePath);
+        if (storeSettings?.store_image) {
+            await deleteImageByUrl(storeSettings.store_image);
         }
 
         await deleteStoreImageDB(null, uniqueId, tenantId);
@@ -153,12 +143,12 @@ exports.deleteStoreImage = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: req.__("store_image_removed"),
-        })
+        });
     } catch (error) {
         console.error(error);
         return res.status(500).json({
             success: false,
-            message: req.__("something_went_wrong_try_later")
+            message: req.__("something_went_wrong_try_later"),
         });
     }
 };

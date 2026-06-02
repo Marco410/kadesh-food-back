@@ -69,7 +69,7 @@ exports.getReportById = async (req, res) => {
         if(!query) return;
         const { from, to, type } = query;
 
-        const report = await getReportByIdDB(reportId, type, from, to, tenantId);
+        const report = await getReportByIdDB(reportId, type, from, to, tenantId, req.__);
         return res.status(200).json(report);
     } catch (error) {
         console.error(error);
