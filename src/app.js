@@ -60,6 +60,16 @@ var corsWhitelist = [
 
 var corsOptions = {
   credentials: true,
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "Accept",
+    "Origin",
+    "X-Requested-With",
+    "X-Refresh-Token",
+    "X-Idempotency-Key",
+    "X-Offline-Created-At",
+  ],
   origin: function (origin, callback) {
     if (corsWhitelist.indexOf(origin) !== -1 || !origin) {
       callback(null, true);

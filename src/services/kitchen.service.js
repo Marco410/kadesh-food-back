@@ -96,3 +96,94 @@ exports.updateOrderItemStatusDB = async (orderItemId, status) => {
   conn.release();
 }
 };
+
+exports.getOrderByIdForSocketDB = async (tenantId, orderId) => {
+  const conn = await getMySqlPromiseConnection();
+  try {
+    const [orders] = await conn.query(
+      `
+      SELECT
+        o.id,
+        o.date,
+        o.delivery_type,
+        o.customer_type,
+        o.customer_id,
+        c.\`name\` AS customer_name,
+        o.table_id,
+        st.table_title,
+        st.\`floor\`,
+        o.status,
+        o.payment_status,
+        o.token_no
+      FROM orders o
+      LEFT JOIN customers c ON o.customer_id = c.phone AND c.tenant_id = o.tenant_id
+      LEFT JOIN store_tables st ON o.table_id = st.id
+      WHERE o.id = ? AND o.tenant_id = ?
+      LIMIT 1
+      `,
+      [orderId, tenantId]
+    );
+
+    if (!orders.length) {
+      return null;
+    }
+
+    const order = orders[0];
+    const [orderItems] = await conn.query(
+      `
+      SELECT
+        oi.id,
+        oi.order_id,
+        oi.item_id,
+        mi.title AS item_title,
+        oi.variant_id,
+        miv.title as variant_title,
+        oi.quantity,
+        oi.status,
+        oi.date,
+        oi.addons,
+        oi.notes
+      FROM order_items oi
+      LEFT JOIN menu_items mi ON oi.item_id = mi.id
+      LEFT JOIN menu_item_variants miv ON oi.item_id = miv.item_id AND oi.variant_id = miv.id
+      WHERE oi.order_id = ? AND oi.tenant_id = ?
+      `,
+      [orderId, tenantId]
+    );
+
+    const addonIds = [
+      ...new Set(orderItems.flatMap((item) => (item.addons ? JSON.parse(item.addons) : []))),
+    ];
+
+    let addons = [];
+    if (addonIds.length > 0) {
+      const [addonsResult] = await conn.query(
+        `SELECT id, item_id, title FROM menu_item_addons WHERE id IN (${addonIds.join(",")})`
+      );
+      addons = addonsResult;
+    }
+
+    const items = orderItems.map((orderItem) => {
+      const addonIdList = orderItem?.addons ? JSON.parse(orderItem.addons) : null;
+      if (!addonIdList) {
+        return { ...orderItem, addons: [] };
+      }
+
+      const itemAddons = addonIdList
+        .map((addonId) => addons.find((addon) => addon.id == addonId))
+        .filter(Boolean);
+
+      return { ...orderItem, addons: itemAddons };
+    });
+
+    return {
+      ...order,
+      items,
+    };
+  } catch (error) {
+    console.error(error);
+    throw error;
+  } finally {
+    conn.release();
+  }
+};
